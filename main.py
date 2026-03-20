@@ -40,8 +40,11 @@ def cmd_train() -> dict:
 
     # 1. Load configuration
     config = load_config(CONFIG_PATH)
-    logger.info("Config: model_type=%s, test_size=%.0f%%",
-                config["model"]["type"], config["model"]["test_size"] * 100)
+    logger.info(
+        "Config: model_type=%s, test_size=%.0f%%",
+        config["model"]["type"],
+        config["model"]["test_size"] * 100,
+    )
 
     # 2. Load raw data
     df = load_data(config, CONFIG_DIR)
@@ -125,9 +128,9 @@ def main():
         description="Bank Marketing ML Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Examples:\n"
-               "  python main.py train\n"
-               "  python main.py predict --input data/raw/bank_marketing_data.csv\n"
-               "  python main.py predict --input data/raw/bank_marketing_data.csv --output predictions.csv",
+        "  python main.py train\n"
+        "  python main.py predict --input data/raw/bank_marketing_data.csv\n"
+        "  python main.py predict --input data/raw/bank_marketing_data.csv --output predictions.csv",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -136,10 +139,9 @@ def main():
 
     # --- predict ---
     predict_parser = subparsers.add_parser(
-        "predict", help="Batch predict using a trained model")
-    predict_parser.add_argument(
-        "--input", required=True, help="Path to input CSV file"
+        "predict", help="Batch predict using a trained model"
     )
+    predict_parser.add_argument("--input", required=True, help="Path to input CSV file")
     predict_parser.add_argument(
         "--output", default=None, help="Path to output CSV (default: print to stdout)"
     )

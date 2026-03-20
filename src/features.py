@@ -66,8 +66,7 @@ def clean_data(df: pd.DataFrame, config: dict) -> pd.DataFrame:
 
     # --- 3. contacted_before flag (pdays == -1 means never contacted) ---
     df["contacted_before"] = (df["pdays"] != -1).astype(int)
-    logger.info(
-        "Created 'contacted_before' feature (1 = was contacted previously)")
+    logger.info("Created 'contacted_before' feature (1 = was contacted previously)")
 
     # --- 4. Log1p transform for right-skewed positive columns ---
     for col in feat_cfg.get("log_transform_cols", []):
@@ -117,7 +116,9 @@ def split_data(
     )
     logger.info(
         "Train/test split: %d train, %d test (stratified, test_size=%.0f%%)",
-        len(X_train), len(X_test), test_size * 100,
+        len(X_train),
+        len(X_test),
+        test_size * 100,
     )
     return X_train, X_test, y_train, y_test
 
@@ -144,26 +145,30 @@ def build_preprocessor(X_train: pd.DataFrame) -> ColumnTransformer:
 
     logger.info(
         "Preprocessor columns — numeric: %d, categorical: %d",
-        len(numeric_cols), len(categorical_cols),
+        len(numeric_cols),
+        len(categorical_cols),
     )
 
-    numeric_pipeline = Pipeline([
-        ("imputer", SimpleImputer(strategy="median")),
-        ("scaler", StandardScaler()),
-    ])
+    numeric_pipeline = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+        ]
+    )
 
-    categorical_pipeline = Pipeline([
-        ("imputer", SimpleImputer(strategy="most_frequent")),
-        # handle_unknown='ignore': unseen categories at inference become all-zero
-        # sparse_output=False: dense array — required by some sklearn estimators
-        ("encoder", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
-    ])
+    categorical_pipeline = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            # handle_unknown='ignore': unseen categories at inference become all-zero
+            # sparse_output=False: dense array — required by some sklearn estimators
+            ("encoder", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
+        ]
+    )
 
     transformers = []
     if numeric_cols:
         transformers.append(("numeric", numeric_pipeline, numeric_cols))
     if categorical_cols:
-        transformers.append(
-            ("categorical", categorical_pipeline, categorical_cols))
+        transformers.append(("categorical", categorical_pipeline, categorical_cols))
 
     return ColumnTransformer(transformers=transformers, remainder="drop")

@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 MODEL_REGISTRY = {
     "logistic_regression": lambda seed: LogisticRegression(
         class_weight="balanced",  # Compensates for 7.6:1 imbalance
-        max_iter=1000,            # Increased from default 100 — LR may need more iters post-scaling
+        max_iter=1000,  # Increased from default 100 — LR may need more iters post-scaling
         random_state=seed,
         solver="lbfgs",
     ),
@@ -95,14 +95,17 @@ def train(X_train, y_train, preprocessor, config: dict) -> Pipeline:
     """
     model = get_model(config)
 
-    pipeline = Pipeline([
-        ("preprocessor", preprocessor),
-        ("classifier", model),
-    ])
+    pipeline = Pipeline(
+        [
+            ("preprocessor", preprocessor),
+            ("classifier", model),
+        ]
+    )
 
     logger.info(
         "Training '%s' on %d samples...",
-        config["model"]["type"], len(X_train),
+        config["model"]["type"],
+        len(X_train),
     )
     pipeline.fit(X_train, y_train)
     logger.info("Training complete.")
@@ -124,9 +127,9 @@ def save_model(pipeline: Pipeline, config: dict) -> str:
         Absolute path to the saved artifact.
     """
     # Resolve artifact path relative to repo root (same dir as config.yaml)
-    config_dir = os.path.dirname(os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "config.yaml")
-    ))
+    config_dir = os.path.dirname(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
+    )
     artifact_path = os.path.join(config_dir, config["artifacts"]["model_path"])
     os.makedirs(os.path.dirname(artifact_path), exist_ok=True)
 

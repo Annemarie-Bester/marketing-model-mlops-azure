@@ -63,8 +63,7 @@ def evaluate(pipeline: Pipeline, X_test, y_test, config: dict) -> dict:
     logger.info("F1 macro        : %.4f", f1_macro)
     logger.info(
         "Classification Report:\n%s",
-        classification_report(y_test, y_pred, target_names=[
-                              "no (0)", "yes (1)"]),
+        classification_report(y_test, y_pred, target_names=["no (0)", "yes (1)"]),
     )
 
     return metrics
@@ -82,9 +81,9 @@ def load_model(config: dict) -> Pipeline:
     Returns:
         Fitted sklearn Pipeline loaded from the artifact path in config.
     """
-    config_dir = os.path.dirname(os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "config.yaml")
-    ))
+    config_dir = os.path.dirname(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
+    )
     artifact_path = os.path.join(config_dir, config["artifacts"]["model_path"])
 
     if not os.path.exists(artifact_path):
@@ -111,11 +110,10 @@ def save_metrics(metrics: dict, config: dict) -> str:
     Returns:
         Absolute path to the saved metrics file.
     """
-    config_dir = os.path.dirname(os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "config.yaml")
-    ))
-    metrics_path = os.path.join(
-        config_dir, config["artifacts"]["metrics_path"])
+    config_dir = os.path.dirname(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
+    )
+    metrics_path = os.path.join(config_dir, config["artifacts"]["metrics_path"])
     os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
 
     with open(metrics_path, "w") as f:
