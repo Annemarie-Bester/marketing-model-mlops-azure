@@ -1,38 +1,29 @@
 """
 data.py — Data loading utilities.
 
-Reads configuration from config.yaml and returns a clean DataFrame.
+Loads raw data from disk based on configuration.
 """
 
 import logging
 import os
 
 import pandas as pd
-import yaml
 
 logger = logging.getLogger(__name__)
 
 
-def load_config(config_path: str) -> dict:
-    with open(config_path, "r") as f:
-        return yaml.safe_load(f)
-
-
-def load_data(config_path: str) -> pd.DataFrame:
-    """Load raw data from the path specified in config.yaml.
+def load_data(config: dict, config_dir: str) -> pd.DataFrame:
+    """Load raw data from the path specified in config.
 
     Args:
-        config_path: Path to config.yaml (relative to project root or absolute).
+        config: Parsed configuration dictionary.
+        config_dir: Directory containing config.yaml (used to resolve relative paths).
 
     Returns:
         Raw DataFrame with no transformations applied.
     """
-    config = load_config(config_path)
     data_cfg = config["data"]
 
-    # Resolve raw_path relative to the config file's directory (not CWD),
-    # so the same config works whether called from the repo root, notebooks/, or anywhere else.
-    config_dir = os.path.dirname(os.path.abspath(config_path))
     raw_path = os.path.join(config_dir, data_cfg["raw_path"])
     separator = data_cfg.get("separator", ",")
     index_col = data_cfg.get("index_col", None)

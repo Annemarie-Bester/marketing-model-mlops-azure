@@ -32,12 +32,14 @@ logger = logging.getLogger(__name__)
 # Ensure src/ is importable when running from the repo root
 sys.path.insert(0, os.path.dirname(__file__))
 
-from src.data import load_config, load_data
+from src.config import load_config
+from src.data import load_data
 from src.evaluate import evaluate, save_metrics
 from src.features import build_preprocessor, clean_data, split_data
 from src.train import save_model, train
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
+CONFIG_DIR = os.path.dirname(os.path.abspath(CONFIG_PATH))
 
 
 def run_pipeline() -> dict:
@@ -54,7 +56,7 @@ def run_pipeline() -> dict:
                 config["model"]["type"], config["model"]["test_size"] * 100)
 
     # 2. Load raw data
-    df = load_data(CONFIG_PATH)
+    df = load_data(config, CONFIG_DIR)
 
     # 3. Clean and engineer features (EDA-driven transforms)
     df_clean = clean_data(df, config)
