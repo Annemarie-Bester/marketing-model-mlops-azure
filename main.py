@@ -13,14 +13,13 @@ from src.features import build_preprocessor, clean_data, split_data
 from src.evaluate import evaluate, load_model, save_metrics
 from src.data import load_data
 from src.config import load_config
+import pandas as pd
 import argparse
 import logging
 import os
 import sys
 
-import pandas as pd
-
-# --- Logging setup must happen before any module imports that use logging ---
+# Logging setup and sys.path must be configured before any src imports
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -28,7 +27,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Ensure src/ is importable when running from the repo root
 sys.path.insert(0, os.path.dirname(__file__))
 
 
@@ -126,8 +124,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="Bank Marketing ML Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Examples:"
-               "  python main.py train"
+        epilog="Examples:\n"
+               "  python main.py train\n"
                "  python main.py predict --input data/raw/bank_marketing_data.csv\n"
                "  python main.py predict --input data/raw/bank_marketing_data.csv --output predictions.csv",
     )

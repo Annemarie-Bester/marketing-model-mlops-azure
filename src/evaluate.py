@@ -61,10 +61,11 @@ def evaluate(pipeline: Pipeline, X_test, y_test, config: dict) -> dict:
     logger.info("ROC-AUC         : %.4f", roc_auc)
     logger.info("F1 (yes/minority): %.4f", f1_minority)
     logger.info("F1 macro        : %.4f", f1_macro)
-
-    # Classification report to console only — per-class breakdown, too verbose for JSON
-    print("\n--- Classification Report ---")
-    print(classification_report(y_test, y_pred, target_names=["no (0)", "yes (1)"]))
+    logger.info(
+        "Classification Report:\n%s",
+        classification_report(y_test, y_pred, target_names=[
+                              "no (0)", "yes (1)"]),
+    )
 
     return metrics
 
@@ -89,7 +90,7 @@ def load_model(config: dict) -> Pipeline:
     if not os.path.exists(artifact_path):
         raise FileNotFoundError(
             f"Model artifact not found at '{artifact_path}'. "
-            "Run 'python main.py' to train the model first."
+            "Run 'python main.py train' first."
         )
 
     pipeline = joblib.load(artifact_path)
@@ -113,7 +114,8 @@ def save_metrics(metrics: dict, config: dict) -> str:
     config_dir = os.path.dirname(os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "config.yaml")
     ))
-    metrics_path = os.path.join(config_dir, config["artifacts"]["metrics_path"])
+    metrics_path = os.path.join(
+        config_dir, config["artifacts"]["metrics_path"])
     os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
 
     with open(metrics_path, "w") as f:
