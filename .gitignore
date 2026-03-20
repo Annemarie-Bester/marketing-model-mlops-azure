@@ -7,6 +7,7 @@ artifacts/*.pkl
 # metrics.json is intentionally tracked (shows results to reviewers)
 !artifacts/metrics.json
 !artifacts/.gitkeep
+!artifacts/predictions.csv
 
 # Python
 __pycache__/

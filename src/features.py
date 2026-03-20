@@ -66,7 +66,8 @@ def clean_data(df: pd.DataFrame, config: dict) -> pd.DataFrame:
 
     # --- 3. contacted_before flag (pdays == -1 means never contacted) ---
     df["contacted_before"] = (df["pdays"] != -1).astype(int)
-    logger.info("Created 'contacted_before' feature (1 = was contacted previously)")
+    logger.info(
+        "Created 'contacted_before' feature (1 = was contacted previously)")
 
     # --- 4. Log1p transform for right-skewed positive columns ---
     for col in feat_cfg.get("log_transform_cols", []):
@@ -81,9 +82,10 @@ def clean_data(df: pd.DataFrame, config: dict) -> pd.DataFrame:
             df[col] = np.sign(df[col]) * np.log1p(np.abs(df[col]))
             logger.info("Applied signed log transform to '%s'", col)
 
-    # --- 6. Encode target ---
-    df[target_col] = (df[target_col] == "yes").astype(int)
-    logger.info("Encoded target '%s': yes=1, no=0", target_col)
+    # --- 6. Encode target (skip during prediction when target is absent) ---
+    if target_col in df.columns:
+        df[target_col] = (df[target_col] == "yes").astype(int)
+        logger.info("Encoded target '%s': yes=1, no=0", target_col)
 
     return df
 
@@ -161,6 +163,7 @@ def build_preprocessor(X_train: pd.DataFrame) -> ColumnTransformer:
     if numeric_cols:
         transformers.append(("numeric", numeric_pipeline, numeric_cols))
     if categorical_cols:
-        transformers.append(("categorical", categorical_pipeline, categorical_cols))
+        transformers.append(
+            ("categorical", categorical_pipeline, categorical_cols))
 
     return ColumnTransformer(transformers=transformers, remainder="drop")
