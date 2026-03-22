@@ -86,39 +86,38 @@ flowchart TD
     subgraph Triggers["CI Trigger Points"]
         PR["Pull Request → dev"]
         PR_MAIN["Pull Request → main"]
-        PUSH["Push → dev"]
+        PUSH["Push → dev (merge)"]
         REL["Merge → main"]
     end
 
     subgraph CI_Validation["CI — Validation (all triggers)"]
-        LINT["Lint + Format Check"]
-        TEST["pytest — unit + integration"]
-        KUBE["K8s manifest validation"]
+        TEST["pytest + kubeconform"]
     end
 
-    subgraph CI_Container["CI — Container Validation (PR → main only)"]
-        CBUILD["Docker Build (no push)"]
-        CSMOKE["Container Smoke Test"]
+    subgraph CI_Container["CI — Container Smoke (PR → main)"]
+        CBUILD["Docker build (no push)"]
+        CSMOKE["Container smoke test"]
     end
 
-    subgraph CI_Build["CI — Build (merge to main only)"]
-        DOCKER["Docker Build"]
-        TAG["Tag: commit SHA + latest"]
-        PUSH_ACR["Push → ACR"]
+    subgraph CD_DEV["CD — Staging Deploy (push to dev)"]
+        DEV_BUILD["Docker build + push dev-sha"]
+        DEV_DEPLOY["kubectl apply bank-marketing-dev"]
+        DEV_SMOKE["In-cluster smoke test"]
     end
 
-    subgraph CD["CD — Deploy (merge to main only)"]
-        DEPLOY["Deploy to AKS"]
-        SMOKE["Smoke Test /health"]
+    subgraph CD_PROD["CD — Production Deploy (merge to main)"]
+        PROD_BUILD["Docker build + push sha+latest"]
+        PROD_DEPLOY["kubectl apply bank-marketing"]
+        PROD_SMOKE["Live smoke test"]
     end
 
     PR --> CI_Validation
     PR_MAIN --> CI_Validation
     PR_MAIN --> CI_Container
     PUSH --> CI_Validation
+    PUSH --> CD_DEV
     REL --> CI_Validation
-    REL --> CI_Build
-    CI_Build --> CD
+    REL --> CD_PROD
 ```
 
 | Trigger | Pipeline Stage | Description |
