@@ -205,3 +205,17 @@ GET /health  → {"status": "ok", "model": "logistic_regression"}
 | Orchestration | Azure Kubernetes Service (AKS) |
 | CI/CD | Azure DevOps Pipelines |
 | Monitoring | Azure Monitor + Application Insights |
+
+---
+
+## Documentation
+
+Detailed system design and operational documentation:
+
+| Document | Description |
+|---|---|
+| [System Architecture](docs/architecture.md) | High-level architecture, component breakdown, data flow diagrams |
+| [Git Workflow](docs/git-workflow.md) | GitFlow branching strategy, CI triggers, merge and release flow |
+| [CI/CD Pipeline](docs/ci-cd-pipeline.md) | Build, test, containerise, and deploy pipeline stages |
+| [Deployment Architecture](docs/deployment.md) | AKS structure, Kubernetes manifests, API exposure, container lifecycle |
+| [MLOps Lifecycle](docs/mlops-lifecycle.md) | Training → deployment → monitoring → retraining lifecycle |
