@@ -41,6 +41,3 @@ logs/
 
 # Environment variables
 .env
-
-# Ignore Github workflow files while still in progress.
-.github/*
