@@ -1,0 +1,51 @@
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# Dev Container
+.devcontainer/
+
+# Python bytecode and caches
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Notebooks — not needed at serving runtime
+notebooks/
+
+# Tests — not needed at serving runtime
+tests/
+
+# Raw data — model is pre-trained and baked in; raw data stays out of the image
+data/
+
+# Documentation
+docs/
+*.md
+REFERENCES.md
+
+# Training entry point — serving image only needs src/ and the artifact
+main.py
+
+# CI/CD pipeline definitions
+.azure/
+azure-pipelines*.yml
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Artifacts — only model.pkl is needed; exclude everything else
+artifacts/metrics.json
+artifacts/.gitkeep

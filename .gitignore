@@ -41,3 +41,6 @@ logs/
 
 # Environment variables
 .env
+
+#TODO list
+docs/todo.md
