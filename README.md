@@ -1,4 +1,4 @@
-# Bank Marketing MLOps — Nedbank ML Engineering Assessment
+# Bank Marketing MLOps — ML Engineering Assessment
 
 A production-grade ML system for predicting bank term deposit subscriptions.
 Built to demonstrate MLOps engineering practices: reproducible pipelines, containerised deployment, CI/CD via Azure DevOps, and serving on AKS.
