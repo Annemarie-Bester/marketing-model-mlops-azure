@@ -137,6 +137,8 @@ python -m pytest tests/test_api.py -v
 
 For validating Kubernetes manifests and testing deployments locally without an AKS cluster.
 
+> **Note:** This project runs inside a Dev Container (nested Docker). `minikube` is not suitable here — its SSH-based bootstrap times out in nested Docker environments. [`kind`](https://kind.sigs.k8s.io/) (Kubernetes IN Docker) is the correct tool for this setup: it runs Kubernetes entirely via the Docker API with no SSH dependency.
+
 ### Install kubectl
 
 ```bash
@@ -150,30 +152,32 @@ sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 kubectl version --client
 ```
 
-### Install and Start minikube
-
-[minikube](https://minikube.sigs.k8s.io/) runs a single-node Kubernetes cluster locally inside Docker:
+### Install and Start kind
 
 ```bash
-# Download and install
-curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-sudo install minikube-linux-amd64 /usr/local/bin/minikube
+# Download and install kind
+curl -Lo /tmp/kind https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64
+chmod +x /tmp/kind
+sudo mv /tmp/kind /usr/local/bin/kind
 
-# Start a cluster (uses Docker driver inside the Dev Container)
-minikube start --driver=docker
+# Verify
+kind version
+
+# Create a single-node cluster
+kind create cluster --name bank-marketing
 
 # Verify the cluster is running
-kubectl cluster-info
+kubectl cluster-info --context kind-bank-marketing
 kubectl get nodes
 ```
 
 ### Deploy Locally
 
-Once you have built a Docker image (see [Section 8](#8-docker-build)), load it into minikube and apply manifests:
+Once you have built a Docker image (see [Section 8](#8-docker-build)), load it into the kind cluster and apply manifests:
 
 ```bash
-# Load local image into minikube (avoids needing a registry)
-minikube image load bank-marketing-api:local
+# Load local image into kind (avoids needing a registry)
+kind load docker-image bank-marketing-api:local --name bank-marketing
 
 # Create namespace
 kubectl create namespace bank-marketing
@@ -187,9 +191,11 @@ kubectl get pods -n bank-marketing
 # Check service
 kubectl get svc -n bank-marketing
 
-# Access the service via minikube
-minikube service bank-marketing-api -n bank-marketing --url
+# Port-forward to access the service locally
+kubectl port-forward svc/bank-marketing-api 8000:8000 -n bank-marketing
 ```
+
+The API will be accessible at `http://localhost:8000` while the port-forward is running.
 
 ### Clean Up
 
@@ -197,11 +203,8 @@ minikube service bank-marketing-api -n bank-marketing --url
 # Delete the deployment
 kubectl delete -f k8s/ -n bank-marketing
 
-# Stop the cluster
-minikube stop
-
 # Delete the cluster entirely
-minikube delete
+kind delete cluster --name bank-marketing
 ```
 
 ---

@@ -193,6 +193,23 @@ Leave a `> Note:` line beneath an entry to record why it was useful.
 [41]. Kubernetes. *Zero-downtime Deployment in Kubernetes with Jenkins (blog)*. https://kubernetes.io/blog/2018/04/30/zero-downtime-deployment-kubernetes-jenkins/. 2018.
 > Documents the blue/green selector-switching pattern on Kubernetes, including both `Deployment` definitions, the public `Service`, and a separate test `Service` for pre-cutover validation — the reference for the blue-green deployment strategy described in `docs/future-enhancements.md`.
 
+https://learn.microsoft.com/en-us/azure/aks/devops-pipeline?view=azure-devops&tabs=cli
+
+https://minikube.sigs.k8s.io/docs/start/?arch=%2Flinux%2Fx86-64%2Fstable%2Fbinary+download
+
+https://kubernetes.io/docs/tutorials/kubernetes-basics/
+
+https://minikube.sigs.k8s.io/docs/handbook/deploying/
+
+https://kubernetes.io/docs/tutorials/hello-minikube/
+
+https://kubernetes.io/docs/concepts/architecture/
+
+https://learn.microsoft.com/en-us/azure/devops/pipelines/ecosystems/kubernetes/deploy?view=azure-devops
+
+https://learn.microsoft.com/en-us/azure/aks/core-aks-concepts
+
+
 ---
 
 ## Containerisation & Docker

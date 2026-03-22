@@ -44,3 +44,9 @@ logs/
 
 #TODO list
 docs/todos.md
+# Downloaded binaries (local tooling, not part of the project)
+kubectl
+minikube-linux-amd64
+kind
+kubeconform
+preloaded-images-k8s-*
