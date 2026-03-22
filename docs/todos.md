@@ -25,23 +25,23 @@ Everything needed before any code changes or PRs. See [docs/local-development.md
 
 ### Environment Setup
 
-- [ ] Install Docker Desktop on host machine
-- [ ] Install VS Code + Dev Containers extension (`ms-vscode-remote.remote-containers`)
-- [ ] Open repo in Dev Container (dependencies install automatically via `postCreateCommand`)
-- [ ] Verify Python 3.12: `python --version`
-- [ ] Verify Docker access from inside Dev Container: `docker info`
+- [x] Install Docker Desktop on host machine
+- [x] Install VS Code + Dev Containers extension (`ms-vscode-remote.remote-containers`)
+- [x] Open repo in Dev Container (dependencies install automatically via `postCreateCommand`)
+- [x] Verify Python 3.12: `python --version`
+- [x] Verify Docker access from inside Dev Container: `docker info`
 
 ### ML Pipeline Validation
 
-- [ ] Run training pipeline: `python main.py train`
-- [ ] Confirm `artifacts/model.pkl` is created
-- [ ] Confirm `artifacts/metrics.json` is created
-- [ ] Run batch predict: `python main.py predict --input data/raw/bank_marketing_data.csv`
+- [x] Run training pipeline: `python main.py train`
+- [x] Confirm `artifacts/model.pkl` is created
+- [x] Confirm `artifacts/metrics.json` is created
+- [x] Run batch predict: `python main.py predict --input data/raw/bank_marketing_data.csv`
 
 ### Test Suite
 
-- [ ] Run full test suite: `python -m pytest tests/ -v --tb=short`
-- [ ] Confirm all tests pass: `test_config.py`, `test_data.py`, `test_features.py`, `test_api.py`
+- [x] Run full test suite: `python -m pytest tests/ -v --tb=short`
+- [x] Confirm all tests pass: `test_config.py`, `test_data.py`, `test_features.py`, `test_api.py`
 
 ### Container Build & Smoke Test
 

@@ -201,7 +201,7 @@ flowchart TD
 
 ## MLOps Maturity Assessment
 
-Using the [Microsoft MLOps Maturity Model](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/mlops-maturity-model):
+Using the Microsoft MLOps Maturity Model **[[9]](../REFERENCES.md)** — https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/mlops-maturity-model:
 
 | Level | Capability | This Project |
 |---|---|---|
