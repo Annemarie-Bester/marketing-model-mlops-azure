@@ -5,7 +5,7 @@ Bibliography for the Bank Marketing MLOps project, organised by topic.
 **Format:** `[N]. Author(s) or Organisation. *Title*. Publisher / URL. Year.`
 Leave a `> Note:` line beneath an entry to record why it was useful.
 
-> Reference numbers follow section order — ML modelling sections are numbered first ([1]–[7]), followed by MLOps lifecycle ([8]–[10]), CI/CD ([11]–[28]), Azure infrastructure ([29]–[37]), deployment strategies ([38]–[41]), and AI tools ([42]–[45]). Cross-references in `docs/` use the bracket notation to link back here.
+> Reference numbers follow section order — ML modelling sections are numbered first ([1]–[7]), followed by MLOps lifecycle ([8]–[10]), CI/CD ([11]–[28]), Azure infrastructure ([29]–[37]), deployment strategies ([38]–[41]), AI tools ([42]–[45]), and containerisation & Docker ([46]–[55]). Cross-references in `docs/` use the bracket notation to link back here.
 
 ---
 
@@ -19,7 +19,8 @@ Leave a `> Note:` line beneath an entry to record why it was useful.
 6. [CI/CD Pipelines — Azure DevOps + AKS](#cicd-pipelines--azure-devops--aks)
 7. [Azure Infrastructure & Platform](#azure-infrastructure--platform)
 8. [Cluster Isolation & Deployment Strategies](#cluster-isolation--deployment-strategies)
-9. [AI Tools](#ai-tools)
+9. [Containerisation & Docker](#containerisation--docker)
+10. [AI Tools](#ai-tools)
 
 ---
 
@@ -191,6 +192,42 @@ Leave a `> Note:` line beneath an entry to record why it was useful.
 
 [41]. Kubernetes. *Zero-downtime Deployment in Kubernetes with Jenkins (blog)*. https://kubernetes.io/blog/2018/04/30/zero-downtime-deployment-kubernetes-jenkins/. 2018.
 > Documents the blue/green selector-switching pattern on Kubernetes, including both `Deployment` definitions, the public `Service`, and a separate test `Service` for pre-cutover validation — the reference for the blue-green deployment strategy described in `docs/future-enhancements.md`.
+
+---
+
+## Containerisation & Docker
+
+*Topics: container vs VM, Docker architecture, images, layers, Dockerfile, docker build/run/push, port mapping, Docker Compose, ACR integration, FastAPI containerisation.*
+
+[46]. Docker. *Docker overview — architecture, daemon, client, images, registries*. https://docs.docker.com/get-started/overview/. 2024.
+> The single best starting page for understanding Docker's architecture — explains what the Docker daemon is, what a Docker client does, what an image is, what a container is, and what a registry is. Covers the relationship between `docker build`, `docker pull`, and `docker run` at a conceptual level before touching the CLI. Read this first.
+
+[47]. Docker. *What is a container?*. https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-container/. 2024.
+> Explains what a container is from first principles — the comparison between VMs (full OS per workload) and containers (shared kernel, isolated user-space processes) is particularly useful. Covers why containers are portable, fast to start, and consistent across environments. Foundational concept underlying the entire CI → ACR → AKS delivery chain in this project.
+
+[48]. Docker. *Get started guide (Parts 1–8)*. https://docs.docker.com/get-started/. 2024.
+> Official multi-part hands-on tutorial — builds a containerised app from scratch, covering `docker build`, `docker run`, port mapping, volumes, and `docker push` to Docker Hub. The most direct path from zero to running your first container. Parts 1–4 cover everything needed to build and run the FastAPI container in this project.
+
+[49]. Docker. *Dockerfile reference*. https://docs.docker.com/reference/dockerfile/. 2024.
+> Complete reference for every Dockerfile instruction: `FROM`, `WORKDIR`, `COPY`, `RUN`, `ENV`, `EXPOSE`, `CMD`, `ENTRYPOINT`. Essential when writing the project's `Dockerfile` — explains the difference between `CMD` and `ENTRYPOINT`, how `EXPOSE` documents intent without binding ports, and how each instruction creates a new image layer.
+
+[50]. Docker. *Building best practices*. https://docs.docker.com/build/building/best-practices/. 2024.
+> Official guidance on writing production-quality Dockerfiles — covers layer caching (order `COPY requirements.txt` before `COPY . .` to avoid reinstalling packages on every build), multi-stage builds for smaller final images, using `.dockerignore` to exclude test files and `__pycache__`, and choosing the right base image. Directly applicable to the FastAPI + sklearn container in this project.
+
+[51]. Docker. *Networking overview*. https://docs.docker.com/network/. 2024.
+> Explains Docker's networking model — bridge networks, host networking, and port mapping (`-p 8000:8000`). Key for understanding why `containerPort: 8000` in the Kubernetes manifest matches the `EXPOSE 8000` in the Dockerfile and the Uvicorn bind address inside the container.
+
+[52]. Docker. *Docker Compose overview*. https://docs.docker.com/compose/. 2024.
+> Introduces `docker-compose.yml` for running multi-container applications locally — useful for running the FastAPI container without memorising long `docker run` flags. The `ports`, `volumes`, and `environment` keys in Compose map directly to concepts used in the Kubernetes deployment manifest.
+
+[53]. FastAPI. *FastAPI in Containers — Docker*. https://fastapi.tiangolo.com/deployment/docker/. 2024.
+> Project-specific reference — official FastAPI deployment guide for Docker. Shows the recommended `Dockerfile` using a `python:3.11-slim` base image, explains how Uvicorn binds inside the container, and covers `CMD` for the process entrypoint. The closest official guide to what this project's `Dockerfile` needs to implement.
+
+[54]. Microsoft. *Push your first image to your Azure container registry using the Docker CLI*. https://learn.microsoft.com/en-us/azure/container-registry/container-registry-get-started-docker-cli. 2025.
+> Step-by-step guide for tagging a locally built Docker image and pushing it to ACR using `docker login`, `docker tag`, and `docker push`. This is the manual equivalent of what the CI pipeline's `Docker@2` task automates — reading this makes the pipeline steps transparent and debuggable.
+
+[55]. Microsoft. *Tutorial: Containerize a Python web app and deploy it to Azure*. https://learn.microsoft.com/en-us/azure/developer/python/tutorial-containerize-simple-web-app-for-app-service. 2024.
+> End-to-end Azure tutorial: write a Dockerfile for a Python web app, build the image, push to ACR, and deploy to an Azure service. Bridges the gap between local Docker knowledge and the full Azure deployment flow — the ACR login, tagging, and push steps are identical to those used in this project's CI/CD pipeline.
 
 ---
 
