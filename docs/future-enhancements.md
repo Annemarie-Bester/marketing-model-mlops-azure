@@ -1,6 +1,8 @@
 # Future Enhancements
 
-Documented improvements and architectural patterns that are **not implemented in the current project** but are worth considering if the case study were formalised into an enterprise-grade production system.
+Documented improvements and architectural patterns beyond the current project implementation.
+
+The project already uses namespace-based environment isolation (`bank-marketing` for production, `bank-marketing-dev` for staging) within a single AKS cluster. The patterns below represent the next tiers of deployment maturity above that baseline.
 
 Each section identifies the relevant MLOps maturity level and provides official references to support implementation.
 
@@ -8,71 +10,17 @@ Each section identifies the relevant MLOps maturity level and provides official 
 
 ## Table of Contents
 
-1. [Deployment Simulation Strategies](#deployment-simulation-strategies)
+1. [Ephemeral Per-PR Environments (Review Apps)](#ephemeral-per-pr-environments-review-apps)
 2. [Blue-Green Deployment](#blue-green-deployment)
 
 ---
 
-## Deployment Simulation Strategies
+## Ephemeral Per-PR Environments (Review Apps)
 
-*Relevant to: CI/CD pipeline — `dev` branch validation and per-PR testing*
-*MLOps maturity level: 2–3 and above*
+*Relevant to: CI/CD pipeline — per-PR validation against a live Kubernetes endpoint*
+*MLOps maturity level: 3 and above*
 
-The current pipeline uses a single AKS environment (production) and simulates deployment on `dev` using a local Docker container smoke test (no cluster required). The strategies below provide progressively stronger deployment simulation by using the actual AKS cluster without touching the production namespace.
-
-### Namespace-Based Isolation (Same AKS Cluster)
-
-Deploy `dev` branch changes to a separate Kubernetes namespace within the same AKS cluster. This provides a real deployment environment without provisioning a second cluster.
-
-```mermaid
-flowchart LR
-    subgraph AKS["AKS Cluster"]
-        subgraph PROD["Namespace: bank-marketing"]
-            P_API["Production API\nDeployed from main"]
-        end
-        subgraph DEV["Namespace: bank-marketing-dev"]
-            D_API["Dev API\nDeployed from dev"]
-        end
-    end
-
-    ACR["ACR"] -->|"main image"| PROD
-    ACR -->|"dev image"| DEV
-```
-
-**How it works:**
-
-1. On `dev` push, the CI pipeline builds the Docker image and pushes to ACR with a `dev-<sha>` tag
-2. CD deploys to the `bank-marketing-dev` namespace using the same K8s manifests but with a `ClusterIP` service (internal only, no external LoadBalancer)
-3. Smoke tests run against the internal service endpoint
-4. The `bank-marketing` (production) namespace remains untouched
-
-**Implementation requirements:**
-
-- Duplicate K8s manifests (or parameterise with Helm/Kustomize) for the dev namespace
-- `ResourceQuota` on the dev namespace to cap resource consumption
-- Kubernetes RBAC to isolate namespace access
-- ACR tag strategy distinguishing dev vs. production images
-
-| Advantage | Disadvantage |
-|---|---|
-| Real Kubernetes deployment — catches scheduling, networking, and probe issues | Consumes cluster resources (CPU, memory) even for validation |
-| Tests against actual K8s service routing and DNS | Requires ACR push on `dev`, increasing registry storage |
-| No additional infrastructure cost (same cluster) | Adds operational complexity: two namespaces to manage |
-| Internal-only service avoids external exposure | Needs parameterised manifests (Helm/Kustomize) |
-
-**When to adopt:** When the project has multiple contributors, the model is serving real traffic, and deployment-related failures become a recurring risk. Microsoft's [AKS cluster isolation best practices](https://learn.microsoft.com/en-us/azure/aks/operator-best-practices-cluster-isolation) recommends logical (namespace) isolation over physical (multi-cluster) isolation: *"Separate teams and projects using logical isolation. Minimize the number of physical AKS clusters you deploy."*
-
-**Key references** — numbers correspond to [REFERENCES.md](../REFERENCES.md):
-
-- **[38]** Microsoft. [Best practices for cluster isolation in AKS](https://learn.microsoft.com/en-us/azure/aks/operator-best-practices-cluster-isolation). Covers logical vs. physical isolation, namespace-based multi-tenancy, RBAC, network policies, and resource quotas.
-- **[12]** Microsoft. [Isolation of environments](https://learn.microsoft.com/en-us/azure/architecture/microservices/ci-cd-kubernetes#isolation-of-environments). Recommends a dedicated production cluster with a separate dev/test cluster using logical (namespace) isolation within the dev/test cluster.
-- **[40]** Kubernetes. [Namespaces](https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/). Official documentation on namespace scoping, DNS behaviour (`<service>.<namespace>.svc.cluster.local`), and resource quota integration.
-
----
-
-### Ephemeral Per-PR Environments (Review Apps)
-
-The most sophisticated option: spin up a temporary Kubernetes namespace for each pull request, deploy the PR's container image, run end-to-end tests, and tear down the namespace on merge or PR close.
+Spin up a temporary Kubernetes namespace for each pull request, deploy the PR's container image, run end-to-end tests, and tear down the namespace on merge or PR close.
 
 ```mermaid
 flowchart TD
@@ -185,7 +133,7 @@ The current project uses Kubernetes **rolling updates** (`strategy.type: Rolling
 
 **Specific reasons this is deferred for this project:**
 
-1. **Single environment, single cluster**: The AKS cluster is sized for production load (`250m–500m` CPU, `256–512Mi` memory per pod). Blue-green would require 4 pods during every deployment window rather than 3 — a 33% resource overhead increase on a single-environment setup.
+1. **Namespace-per-slot overhead**: The production namespace (`bank-marketing`) runs 2 replicas. Blue-green would require 4 pods (2 blue + 2 green) during every deployment window — a 100% pod count increase in the production namespace during cutover — compared to the 3 pods needed during a rolling update (`replicas: 2` + `maxSurge: 1`).
 
 2. **Rolling updates are already safe here**: The `/health` readiness probe (`initialDelaySeconds: 5`) blocks traffic from reaching a pod before `model.pkl` is loaded. The practical mixed-version window with `replicas: 2` and `maxSurge: 1` is on the order of 10–20 seconds — negligible for a batch-scoring use case.
 

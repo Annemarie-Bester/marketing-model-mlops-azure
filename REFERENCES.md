@@ -5,7 +5,7 @@ Bibliography for the Bank Marketing MLOps project, organised by topic.
 **Format:** `[N]. Author(s) or Organisation. *Title*. Publisher / URL. Year.`
 Leave a `> Note:` line beneath an entry to record why it was useful.
 
-> Reference numbers follow section order — ML modelling sections are numbered first ([1]–[7]), followed by MLOps lifecycle ([8]–[10]), CI/CD ([11]–[28]), Azure infrastructure ([29]–[37]), deployment strategies ([38]–[41]), AI tools ([42]–[45]), and containerisation & Docker ([46]–[55]). Cross-references in `docs/` use the bracket notation to link back here.
+> Reference numbers follow section order — ML modelling sections are numbered first ([1]–[7]), followed by MLOps lifecycle ([8]–[10]), CI/CD ([11]–[28]), Azure infrastructure ([29]–[37]), deployment strategies ([38]–[41]), AI tools ([42]–[45]), containerisation & Docker ([46]–[55]), and local Kubernetes development ([56]–[62]). Cross-references in `docs/` use the bracket notation to link back here.
 
 ---
 
@@ -19,8 +19,9 @@ Leave a `> Note:` line beneath an entry to record why it was useful.
 6. [CI/CD Pipelines — Azure DevOps + AKS](#cicd-pipelines--azure-devops--aks)
 7. [Azure Infrastructure & Platform](#azure-infrastructure--platform)
 8. [Cluster Isolation & Deployment Strategies](#cluster-isolation--deployment-strategies)
-9. [Containerisation & Docker](#containerisation--docker)
-10. [AI Tools](#ai-tools)
+9. [Local Kubernetes Development (kind)](#local-kubernetes-development-kind)
+10. [Containerisation & Docker](#containerisation--docker)
+11. [AI Tools](#ai-tools)
 
 ---
 
@@ -193,22 +194,32 @@ Leave a `> Note:` line beneath an entry to record why it was useful.
 [41]. Kubernetes. *Zero-downtime Deployment in Kubernetes with Jenkins (blog)*. https://kubernetes.io/blog/2018/04/30/zero-downtime-deployment-kubernetes-jenkins/. 2018.
 > Documents the blue/green selector-switching pattern on Kubernetes, including both `Deployment` definitions, the public `Service`, and a separate test `Service` for pre-cutover validation — the reference for the blue-green deployment strategy described in `docs/future-enhancements.md`.
 
-https://learn.microsoft.com/en-us/azure/aks/devops-pipeline?view=azure-devops&tabs=cli
+---
 
-https://minikube.sigs.k8s.io/docs/start/?arch=%2Flinux%2Fx86-64%2Fstable%2Fbinary+download
+## Local Kubernetes Development (kind)
 
-https://kubernetes.io/docs/tutorials/kubernetes-basics/
+*Topics: kind (Kubernetes IN Docker), kind-config.yaml schema, kubeadmConfigPatches, KubeletConfiguration, cgroupDriver, WSL2 compatibility, DooD devcontainer environments, loading images without a registry.*
 
-https://minikube.sigs.k8s.io/docs/handbook/deploying/
+[56]. kind. *Quick Start*. https://kind.sigs.k8s.io/docs/user/quick-start/. 2024.
+> The official starting point for kind — covers installation, `kind create cluster`, loading Docker images into the cluster with `kind load docker-image`, and deleting clusters. Everything in Section 5 of the Local Development Guide maps to sections in this page.
 
-https://kubernetes.io/docs/tutorials/hello-minikube/
+[57]. kind. *Configuration*. https://kind.sigs.k8s.io/docs/user/configuration/. 2024.
+> Complete reference for `kind-config.yaml` — explains the `kind.x-k8s.io/v1alpha4` API version, the `nodes` array, `role: control-plane`, and `kubeadmConfigPatches`. This is the primary reference for understanding every field in the project's `kind-config.yaml`. Read this to understand what the config file is doing and what else you can configure (extra port mappings, multi-node clusters, custom images).
 
-https://kubernetes.io/docs/concepts/architecture/
+[58]. kind. *Known issues*. https://kind.sigs.k8s.io/docs/user/known-issues/. 2024.
+> Documents environment-specific issues that cause kind clusters to fail — includes the cgroupfs/cgroupsv2 issue on WSL2 and Docker Desktop, pod errors from open file limits, and networking issues in Docker-in-Docker vs Docker-outside-of-Docker setups. The direct source for why `cgroupDriver: cgroupfs` is needed in `kind-config.yaml` for this project.
 
-https://learn.microsoft.com/en-us/azure/devops/pipelines/ecosystems/kubernetes/deploy?view=azure-devops
+[59]. Kubernetes. *KubeletConfiguration — API reference*. https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/. 2024.
+> Full field reference for the `KubeletConfiguration` object used inside `kubeadmConfigPatches` in `kind-config.yaml`. Explains what `cgroupDriver` controls (how the kubelet manages cgroups for containers) and the valid values (`cgroupfs` vs `systemd`). Read this to understand *why* the patch fixes the control-plane startup failure on cgroupfs v1 hosts.
 
-https://learn.microsoft.com/en-us/azure/aks/core-aks-concepts
+[60]. Kubernetes. *kubeadm Configuration (v1beta3)*. https://kubernetes.io/docs/reference/config-api/kubeadm-config.v1beta3/. 2024.
+> Reference for the `kubeadmConfigPatches` mechanism used in `kind-config.yaml` — explains how kubeadm applies configuration patches during cluster bootstrap, what `KubeletConfiguration` and `ClusterConfiguration` kinds are, and how they map to kubelet and API server settings. Useful context for understanding how kind applies the cgroupDriver patch during node initialisation.
 
+[61]. Microsoft. *Quickstart: Deploy an AKS cluster using Azure CLI*. https://learn.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-cli. 2025.
+> Step-by-step CLI walkthrough for deploying a real AKS cluster and running `kubectl apply` against it — covers `az aks get-credentials`, which is the command that switches your local `kubectl` context from the kind cluster to AKS. The natural next step after validating manifests locally with kind: run `az aks get-credentials --resource-group <rg> --name <cluster>` then re-run the same `kubectl apply -f k8s/ -n bank-marketing` commands used in local development.
+
+[62]. Microsoft/Azure. *Automated Test Environment for AKS Applications*. https://github.com/Azure-Samples/automated-test-environment-for-aks-applications. GitHub, 2024.
+> Azure Samples reference implementation for spinning up ephemeral per-PR Kubernetes namespaces for automated integration testing on AKS — directly extends the namespace isolation pattern in Section 8 of the Cluster Isolation & Deployment Strategies documentation. Shows how to automate the `kubectl create namespace pr-<id>`, deploy, test, and teardown lifecycle in a CI pipeline.
 
 ---
 

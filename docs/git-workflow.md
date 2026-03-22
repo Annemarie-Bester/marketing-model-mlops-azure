@@ -47,41 +47,35 @@ gitGraph
 
 ---
 
-## Single-Environment Strategy
+## Environment Strategy
 
-This project deploys to **one AKS environment** (production). There is no separate dev/staging cluster.
-
-The `dev` and `main` branches remain valuable — but as **quality gates**, not environment targets:
+This project deploys to **two Kubernetes namespaces within the same AKS cluster** — `bank-marketing-dev` (staging) and `bank-marketing` (production). There is no separate dev/staging cluster; namespace isolation keeps infrastructure cost flat while providing a real deployment gate on the `dev` branch.
 
 ```mermaid
 flowchart LR
     subgraph dev["dev branch"]
-        D_GATE["Quality Gate\n• CI: lint + tests\n• Code review\n• Integration point"]
+        D_GATE["Staging Gate\n• CI: tests + kubeconform\n• Docker build + push (dev-sha)\n• Deploy to bank-marketing-dev\n• In-cluster smoke test"]
     end
 
     subgraph main["main branch"]
-        M_GATE["Deployment Gate\n• CI: lint + tests\n• Docker build + push to ACR\n• CD: deploy to AKS"]
+        M_GATE["Production Gate\n• CI: tests + kubeconform\n• Docker build + push (sha + latest)\n• Deploy to bank-marketing\n• Live smoke test"]
     end
 
     feature["feature/*"] -->|"PR + squash merge"| dev
     dev -->|"release/* → merge"| main
 ```
 
-| Branch | Role in single-environment setup |
+| Branch | Role in namespace-isolated setup |
 |---|---|
-| `dev` | **Validation gate.** All feature work integrates here. CI runs tests on every PR and push. No images are built, no deployments happen. This is where you catch bugs before they reach `main`. |
-| `main` | **Deployment gate.** Only release-ready code reaches here. Merging to `main` triggers the full pipeline: test → build → push to ACR → deploy to AKS. |
-| `feature/*` | Short-lived branches. PR into `dev` triggers CI validation. |
+| `dev` | **Staging gate.** All feature work integrates here. On merge, a `dev-<sha>` image is pushed to ACR and deployed to `bank-marketing-dev`. In-cluster smoke tests run against the `ClusterIP` service. Catches scheduling failures, image pull errors, and model loading crashes before `main`. |
+| `main` | **Production gate.** Only release-ready code reaches here. Merging to `main` triggers the full pipeline: test → build → push to ACR (`<sha>` + `latest`) → deploy to `bank-marketing` → live smoke test. |
+| `feature/*` | Short-lived branches. PR into `dev` triggers CI validation and a local container smoke test. |
 
-### Why not skip `dev` and merge straight to `main`?
+### Why namespace isolation instead of a second cluster?
 
-- **Integration buffer**: Multiple features can land on `dev` and be tested together before a release. If feature B breaks feature A, you find out on `dev` — not in production.
-- **Release batching**: You control when a set of changes gets promoted. Not every merged feature needs to deploy immediately.
-- **Hotfix isolation**: Emergency fixes go `hotfix/*` → `main` directly, without waiting for in-progress features on `dev`.
-
-### Why not build Docker images on `dev` pushes?
-
-With no dev environment to deploy to, building images on `dev` is waste. The CI pipeline on `dev` validates that tests pass and code is correct. The Docker build + push only happens when code reaches `main` — because that's the only branch that triggers a deployment.
+- **Cost**: A second AKS cluster adds fixed node-pool costs even when idle. Namespace isolation reuses existing nodes with a `ResourceQuota` cap to protect production pods.
+- **Operational simplicity**: One cluster to monitor, one ACR, one set of access credentials. Microsoft's [AKS isolation best practices](https://learn.microsoft.com/en-us/azure/aks/operator-best-practices-cluster-isolation) explicitly recommends logical isolation over physical: *"Minimize the number of physical AKS clusters you deploy."*
+- **Gate quality**: Deploying to the same real AKS cluster (different namespace) catches ACR pull failures, pod scheduling issues, health probe timing, and K8s network behaviour that `--dry-run=server` never exercises.
 
 ---
 
@@ -129,10 +123,10 @@ flowchart TD
 
 | Trigger | Pipeline Stage | Description |
 |---|---|---|
-| PR opened/updated → `dev` | Validation | Run tests + K8s manifest validation. No build, no deploy. |
+| PR opened/updated → `dev` | Validation | Run tests + K8s manifest validation + local container smoke test. No push, no deploy. |
 | PR opened/updated → `main` | Validation + Container Build | Run tests, K8s manifest validation, Docker build (no push) + container smoke test. No push, no deploy. |
-| Push to `dev` | Validation + Container Smoke | Run tests + K8s manifest validation + local container smoke test. No push, no deploy. |
-| Merge to `main` (release) | Validation + Build + Deploy | Run tests → K8s manifest validation → build image → push to ACR → deploy to AKS. |
+| Push to `dev` | Validation + Staging Deploy | Run tests + kubeconform → build image → push `dev-<sha>` to ACR → deploy to `bank-marketing-dev` → in-cluster smoke test. |
+| Merge to `main` (release) | Validation + Build + Deploy | Run tests → kubeconform → build image → push `<sha>` + `latest` to ACR → deploy to `bank-marketing` → live smoke test. |
 
 ---
 

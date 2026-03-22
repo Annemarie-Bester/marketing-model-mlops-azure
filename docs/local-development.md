@@ -164,48 +164,145 @@ sudo mv /tmp/kind /usr/local/bin/kind
 kind version
 
 # Create a single-node cluster
-kind create cluster --name bank-marketing
+# kind-config.yaml sets cgroupDriver: cgroupfs — required for WSL2 + DooD devcontainer environments
+kind create cluster --name bank-marketing --config kind-config.yaml
 
 # Verify the cluster is running
 kubectl cluster-info --context kind-bank-marketing
 kubectl get nodes
 ```
 
+### Two-Namespace Local Setup
+
+The AKS cluster uses two namespaces — `bank-marketing` (production, deployed from `main`) and `bank-marketing-dev` (staging, deployed from `dev`). The local kind cluster mirrors this structure exactly, so you can validate both namespace configurations and the staging smoke-test flow before pushing to AKS.
+
+```
+kind cluster: bank-marketing
+├── namespace: bank-marketing        ← production (k8s/deployment.yaml + k8s/service.yaml)
+└── namespace: bank-marketing-dev    ← staging    (k8s/deployment-dev.yaml + k8s/service-dev.yaml + k8s/quota-dev.yaml)
+```
+
 ### Deploy Locally
 
-Once you have built a Docker image (see [Section 8](#8-docker-build)), load it into the kind cluster and apply manifests:
+Once you have built a Docker image (see [Section 8](#8-docker-build)), load it into the kind cluster and deploy to both namespaces:
 
 ```bash
 # Load local image into kind (avoids needing a registry)
+# A single local image is used for both namespaces — on AKS, dev-<sha> and <sha> are separate ACR tags
 kind load docker-image bank-marketing-api:local --name bank-marketing
 
-# Create namespace
+# Create both namespaces
 kubectl create namespace bank-marketing
+kubectl create namespace bank-marketing-dev
 
-# Apply manifests (adjust image reference in deployment.yaml to bank-marketing-api:local)
-kubectl apply -f k8s/ -n bank-marketing
+# Deploy to production namespace
+# (k8s/deployment.yaml image field must reference bank-marketing-api:local for kind)
+kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -n bank-marketing
 
-# Verify pods are running
+# Deploy to staging namespace (ResourceQuota + ClusterIP service + 1-replica deployment)
+kubectl apply -f k8s/quota-dev.yaml -n bank-marketing-dev
+kubectl apply -f k8s/deployment-dev.yaml -f k8s/service-dev.yaml -n bank-marketing-dev
+
+# Verify pods are running in both namespaces
 kubectl get pods -n bank-marketing
+kubectl get pods -n bank-marketing-dev
 
-# Check service
+# Check services (production: LoadBalancer pending; staging: ClusterIP with cluster IP assigned)
 kubectl get svc -n bank-marketing
-
-# Port-forward to access the service locally
-kubectl port-forward svc/bank-marketing-api 8000:8000 -n bank-marketing
+kubectl get svc -n bank-marketing-dev
 ```
 
-The API will be accessible at `http://localhost:8000` while the port-forward is running.
+> **Note on service types in kind:**
+> - `k8s/service.yaml` (production) uses `type: LoadBalancer` — on AKS this provisions an Azure Load Balancer. In kind it stays in `<pending>` state. Use `kubectl port-forward` to access it locally.
+> - `k8s/service-dev.yaml` (staging) uses `type: ClusterIP` — this is the correct type for the staging service in both kind and AKS. It is accessed via `kubectl port-forward` or `kubectl exec` locally, and via `kubectl exec` in the CI pipeline smoke test.
+
+### Access the Services Locally
+
+```bash
+# Production namespace — port-forward the LoadBalancer service
+kubectl port-forward svc/bank-marketing-api 8000:80 -n bank-marketing
+# API accessible at http://localhost:8000
+
+# Staging namespace — port-forward the ClusterIP service
+kubectl port-forward svc/bank-marketing-api 8001:8000 -n bank-marketing-dev
+# Staging API accessible at http://localhost:8001
+```
+
+### Simulating the CD_Dev Smoke Test Locally
+
+The CI pipeline (`CD_Dev` stage) validates the staging namespace by running a `kubectl exec` command against the deployed pod — not via a port-forward. You can replicate this locally to confirm the smoke test will pass on AKS:
+
+```bash
+# Wait for the staging pod to be ready
+kubectl wait --for=condition=ready pod \
+  -l app=bank-marketing-api \
+  -n bank-marketing-dev \
+  --timeout=120s
+
+# Run health check from inside the pod (mirrors what CD_Dev does in AKS)
+kubectl exec -n bank-marketing-dev \
+  deploy/bank-marketing-api -- \
+  curl -sf http://localhost:8000/health
+
+# Run a prediction from inside the pod
+kubectl exec -n bank-marketing-dev \
+  deploy/bank-marketing-api -- \
+  curl -sf -X POST http://localhost:8000/predict \
+    -H "Content-Type: application/json" \
+    -d '{"age":35,"job":"management","marital":"married","education":"tertiary","default":"no","balance":1500.0,"housing":"yes","loan":"no","contact":"cellular","day":15,"month":"may","duration":250.0,"campaign":1,"pdays":-1,"previous":0,"poutcome":"unknown"}'
+```
+
+If these commands pass locally, the equivalent `CD_Dev` stage will pass on AKS.
+
+### Verify ResourceQuota
+
+Confirm the staging `ResourceQuota` is enforced correctly:
+
+```bash
+# View quota usage in the staging namespace
+kubectl describe resourcequota bank-marketing-dev-quota -n bank-marketing-dev
+```
+
+Expected output shows `Used` values at or below `Hard` limits. If a second pod is attempted (e.g. a manual `kubectl run`), it should be rejected by the quota.
 
 ### Clean Up
 
 ```bash
-# Delete the deployment
-kubectl delete -f k8s/ -n bank-marketing
+# Delete resources from both namespaces
+kubectl delete -f k8s/deployment.yaml -f k8s/service.yaml -n bank-marketing
+kubectl delete -f k8s/deployment-dev.yaml -f k8s/service-dev.yaml -f k8s/quota-dev.yaml -n bank-marketing-dev
 
-# Delete the cluster entirely
+# Or delete the cluster entirely
 kind delete cluster --name bank-marketing
 ```
+
+### Moving to AKS
+
+Once both namespace configurations are validated locally with kind, deploying to AKS requires only a context switch — the `kubectl apply` commands are identical. The key difference is that on AKS, images come from ACR rather than the local kind image cache:
+
+```bash
+# Authenticate to AKS and update your local kubeconfig
+az aks get-credentials --resource-group rg-bank-marketing --name bank-marketing-aks
+
+# Confirm you are now targeting AKS
+kubectl config current-context
+
+# Create namespaces on AKS (if not already present)
+kubectl create namespace bank-marketing --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace bank-marketing-dev --dry-run=client -o yaml | kubectl apply -f -
+
+# Apply production manifests (image must reference ACR tag: bankmarketingacr.azurecr.io/bank-marketing-api:<sha>)
+kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -n bank-marketing
+
+# Apply staging manifests (image: bankmarketingacr.azurecr.io/bank-marketing-api:dev-<sha>)
+kubectl apply -f k8s/quota-dev.yaml -n bank-marketing-dev
+kubectl apply -f k8s/deployment-dev.yaml -f k8s/service-dev.yaml -n bank-marketing-dev
+
+# Switch back to kind for local development
+kubectl config use-context kind-bank-marketing
+```
+
+> **Note:** Before applying to AKS, update the `image:` fields in `k8s/deployment.yaml` and `k8s/deployment-dev.yaml` to point to ACR (e.g. `bankmarketingacr.azurecr.io/bank-marketing-api:latest` and `bankmarketingacr.azurecr.io/bank-marketing-api:dev-latest`) rather than the local `bank-marketing-api:local` tag used in kind. In practice the CI/CD pipeline manages this substitution automatically via the `KubernetesManifest@1` task's `containers:` input.
 
 ---
 
@@ -547,7 +644,18 @@ print(response.json())       # {"prediction": ..., "probability": ..., "label": 
 | Health check | `curl -s http://localhost:8000/health` |
 | Predict request | `curl -s -X POST http://localhost:8000/predict -H "Content-Type: application/json" -d '{...}'` |
 | Validate K8s manifests | `kubeconform -summary -strict k8s/` |
-| Start minikube | `minikube start --driver=docker` |
+| Start kind cluster | `kind create cluster --name bank-marketing --config kind-config.yaml` |
+| Load image into kind | `kind load docker-image bank-marketing-api:local --name bank-marketing` |
+| Create namespaces | `kubectl create namespace bank-marketing && kubectl create namespace bank-marketing-dev` |
+| Deploy to production namespace | `kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -n bank-marketing` |
+| Deploy to staging namespace | `kubectl apply -f k8s/quota-dev.yaml -f k8s/deployment-dev.yaml -f k8s/service-dev.yaml -n bank-marketing-dev` |
+| Port-forward production | `kubectl port-forward svc/bank-marketing-api 8000:80 -n bank-marketing` |
+| Port-forward staging | `kubectl port-forward svc/bank-marketing-api 8001:8000 -n bank-marketing-dev` |
+| Simulate CD_Dev smoke test | `kubectl exec -n bank-marketing-dev deploy/bank-marketing-api -- curl -sf http://localhost:8000/health` |
+| Check ResourceQuota usage | `kubectl describe resourcequota bank-marketing-dev-quota -n bank-marketing-dev` |
+| Delete kind cluster | `kind delete cluster --name bank-marketing` |
+| Switch kubectl to AKS | `az aks get-credentials --resource-group rg-bank-marketing --name bank-marketing-aks` |
+| Switch kubectl to kind | `kubectl config use-context kind-bank-marketing` |
 
 ---
 
@@ -575,6 +683,7 @@ print(response.json())       # {"prediction": ..., "probability": ..., "label": 
 ### Kubernetes
 
 - Kubernetes. [Install kubectl — Linux](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/). Official install instructions for `kubectl` on Linux, referenced in Section 5.
-- minikube. [Get Started](https://minikube.sigs.k8s.io/docs/start/). Installation and `minikube start --driver=docker` command used for local cluster setup in Section 5.
-- minikube. [Pushing images — minikube image load](https://minikube.sigs.k8s.io/docs/handbook/pushing/#7-loading-directly-to-in-cluster-container-runtime). Documents the `minikube image load` command used to load locally-built images into the minikube cluster without a registry.
+- kind. [Quick Start](https://kind.sigs.k8s.io/docs/user/quick-start/). Official installation and cluster creation guide — covers `kind create cluster`, kubeconfig setup, and cluster lifecycle commands used in Section 5.
+- kind. [Loading an image into a cluster](https://kind.sigs.k8s.io/docs/user/quick-start/#loading-an-image-into-your-cluster). Documents the `kind load docker-image` command used to load locally-built images into the kind cluster without a registry.
+- kind. [Known issues — WSL2](https://kind.sigs.k8s.io/docs/user/known-issues/#pod-errors-due-to-too-many-open-files). Background on kind behaviour in containerised and WSL2 environments — relevant to the `cgroupDriver: cgroupfs` config in `kind-config.yaml`.
 - yannh. [kubeconform — GitHub](https://github.com/yannh/kubeconform). Kubernetes manifest validator used in Section 6 — covers installation, `-strict` mode, and schema validation behaviour.

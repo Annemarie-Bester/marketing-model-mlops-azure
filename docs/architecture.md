@@ -39,14 +39,16 @@ flowchart LR
     end
 
     subgraph Azure["Azure Resources"]
-        RG["Resource Group<br/>rg-bank-marketing"]
         ACR["Azure Container Registry<br/>bankmarketingacr (Basic)"]
         subgraph AKS["AKS Cluster — bank-marketing-aks"]
-            NS["Namespace: bank-marketing"]
-            subgraph Pods["Deployment: 2 replicas"]
-                POD["FastAPI + model.pkl"]
+            subgraph NS_PROD["Namespace: bank-marketing (production)"]
+                POD_PROD["2 replicas · FastAPI + model.pkl"]
+                SVC_PROD["Service: LoadBalancer"]
             end
-            SVC["Service: LoadBalancer"]
+            subgraph NS_DEV["Namespace: bank-marketing-dev (staging)"]
+                POD_DEV["1 replica · FastAPI + model.pkl"]
+                SVC_DEV["Service: ClusterIP (internal)"]
+            end
         end
         MON["Azure Monitor"]
         AI["Application Insights"]
@@ -55,14 +57,15 @@ flowchart LR
     DC -->|"commit + push"| GH
     GH -->|"PR webhook"| P1
     GH -->|"push webhook"| P2
-    P2 -->|"docker build + push<br/>(main only)"| ACR
-    P2 -->|"kubectl apply<br/>(main only)"| AKS
+    P2 -->|"main: sha+latest / dev: dev-sha"| ACR
+    P2 -->|"main → bank-marketing / dev → bank-marketing-dev"| AKS
     ENV -.->|"approval gate"| P2
-    ACR -->|"image pull"| AKS
-    NS --> Pods
-    Pods --> SVC
-    POD -->|"metrics + logs"| MON
-    POD -->|"traces + errors"| AI
+    ACR -->|"image pull (AcrPull)"| POD_PROD
+    ACR -->|"image pull (AcrPull)"| POD_DEV
+    POD_PROD --> SVC_PROD
+    POD_DEV --> SVC_DEV
+    POD_PROD -->|"metrics + logs"| MON
+    POD_PROD -->|"traces + errors"| AI
 ```
 
 ### Component Summary
@@ -73,7 +76,7 @@ flowchart LR
 | Source Control | GitHub | Code, config, pipeline definitions, branch protection |
 | CI/CD | Azure DevOps Pipelines | Two-pipeline architecture — PR validation + push-triggered CI/CD |
 | Registry | Azure Container Registry | Private Docker image hosting (Basic SKU) |
-| Runtime | Azure Kubernetes Service | Managed Kubernetes cluster running the prediction API |
+| Runtime | Azure Kubernetes Service | Managed Kubernetes cluster — two namespaces: `bank-marketing` (production) and `bank-marketing-dev` (staging) |
 | Observability | Azure Monitor + App Insights | Metrics, logs, traces, and alerting |
 
 ---
@@ -110,7 +113,7 @@ flowchart TD
     RG --> MON["Azure Monitor<br/>(AKS monitoring addon)"]
     RG --> AI["Application Insights<br/>bank-marketing-insights"]
 
-    ACR ---|"AcrPull role<br/>(via --attach-acr)"| AKS
+    ACR ---|"AcrPull role (--attach-acr)"| AKS
 ```
 
 ### Resource Inventory
@@ -159,8 +162,8 @@ gitGraph
 
 | Branch | Purpose | Protected | CI/CD Trigger |
 |---|---|---|---|
-| `main` | Production-ready code | Yes (GitHub branch protection) | Push → Pipeline 2 (`CD_Main` — production deploy) |
-| `dev` | Integration branch | Yes (GitHub branch protection) | Push → Pipeline 2 (`CD_Dev` — mock deploy) |
+| `main` | Production-ready code | Yes (GitHub branch protection) | Push → Pipeline 2 (`CD_Main` — production deploy to `bank-marketing`) |
+| `dev` | Integration branch | Yes (GitHub branch protection) | Push → Pipeline 2 (`CD_Dev` — staging deploy to `bank-marketing-dev`) |
 | `feature/*` | Individual work items | No | PR → Pipeline 1 (validation) |
 | `release/*` | Release stabilisation | No | PR → Pipeline 1 (validation) |
 
@@ -197,7 +200,7 @@ flowchart TD
 
     subgraph P2_DEV["Pipeline 2 (dev path)"]
         CI_D["CI: Install → pytest → kubeconform"]
-        CD_D["CD_Dev: Docker build (no push)<br/>→ smoke test → --dry-run=server"]
+        CD_D["CD_Dev: Docker build + push (dev-sha)<br/>→ kubectl apply (bank-marketing-dev)<br/>→ in-cluster smoke test"]
         CI_D --> CD_D
     end
 
@@ -229,7 +232,7 @@ Triggered by pushes (merges) to `dev` and `main`. Runs a shared CI stage followe
 
 | Target Branch | CD Stage | ACR Push | AKS Deploy | Approval Gate |
 |---|---|---|---|---|
-| `dev` | `CD_Dev` (mock) | No | `--dry-run=server` only | No |
+| `dev` | `CD_Dev` (staging) | Yes (`dev-<sha>`) | `kubectl apply -n bank-marketing-dev` | No |
 | `main` | `CD_Main` (production) | Yes | `kubectl apply` | Yes (`production` environment) |
 
 ### Why Two Pipelines?
@@ -279,8 +282,9 @@ The FastAPI application is packaged as a Docker image containing the application
 
 | Tag | When Applied | Purpose |
 |---|---|---|
-| `<git-commit-sha>` | Every ACR push (main merges) | Immutable identifier for traceability |
-| `latest` | Every ACR push (main merges) | Convenience tag for rolling deployments |
+| `<git-commit-sha>` | ACR push on main merges | Immutable identifier for production traceability |
+| `latest` | ACR push on main merges | Convenience tag for rolling production deployments |
+| `dev-<git-commit-sha>` | ACR push on dev merges | Staging image — maps the exact dev commit deployed to `bank-marketing-dev` |
 
 ### Build Contexts
 
@@ -288,7 +292,7 @@ The FastAPI application is packaged as a Docker image containing the application
 |---|---|---|
 | Local development | Dev Container (`docker build`) | No |
 | PR validation | Pipeline 1 (Microsoft-hosted agent) | No |
-| Dev merge | Pipeline 2 / `CD_Dev` | No |
+| Dev merge | Pipeline 2 / `CD_Dev` | Yes (`dev-<sha>`) |
 | Main merge | Pipeline 2 / `CD_Main` | Yes |
 
 ---
@@ -300,24 +304,29 @@ The FastAPI application is packaged as a Docker image containing the application
 ```mermaid
 flowchart TD
     subgraph AKS["AKS Cluster — bank-marketing-aks"]
-        subgraph NS["Namespace: bank-marketing"]
-            subgraph DEP["Deployment: bank-marketing-api"]
-                POD1["Pod 1<br/>FastAPI + model.pkl"]
-                POD2["Pod 2<br/>FastAPI + model.pkl"]
-            end
-            SVC["Service: bank-marketing-api<br/>Type: LoadBalancer<br/>Port 80 → 8000"]
+        subgraph NS_PROD["Namespace: bank-marketing (production)"]
+            DEP_PROD["Deployment: bank-marketing-api<br/>2 replicas · FastAPI + model.pkl"]
+            SVC_PROD["Service: bank-marketing-api<br/>Type: LoadBalancer · Port 80 → 8000"]
+        end
+        subgraph NS_DEV["Namespace: bank-marketing-dev (staging)"]
+            DEP_DEV["Deployment: bank-marketing-api<br/>1 replica · FastAPI + model.pkl"]
+            SVC_DEV["Service: bank-marketing-api<br/>Type: ClusterIP · Port 8000 (internal)"]
+            RQ["ResourceQuota: 1 CPU max · 512Mi max"]
         end
     end
 
-    ACR["ACR<br/>bankmarketingacr"]
-    LB["Azure Load Balancer<br/>External IP"]
+    ACR["ACR · bankmarketingacr"]
+    LB["Azure Load Balancer · External IP"]
     CLIENT["Client / Upstream Service"]
+    CICD["CD_Dev (Pipeline 2)"]
 
-    ACR -->|"image pull (AcrPull role)"| DEP
-    SVC --> LB
+    ACR -->|"sha + latest (AcrPull)"| DEP_PROD
+    ACR -->|"dev-sha (AcrPull)"| DEP_DEV
+    DEP_PROD --> SVC_PROD
+    SVC_PROD --> LB
     CLIENT -->|"POST /predict"| LB
-    LB --> POD1
-    LB --> POD2
+    LB --> DEP_PROD
+    CICD -->|"smoke test (kubectl exec)"| SVC_DEV
 ```
 
 ### Resource Sizing
@@ -325,9 +334,11 @@ flowchart TD
 | Resource | Spec | Rationale |
 |---|---|---|
 | Node pool | 2× Standard_B2s | Cost-effective for lightweight inference workloads |
-| Replicas | 2 | Basic availability — zero-downtime during rolling updates |
+| Replicas (`bank-marketing`) | 2 | Basic availability — zero-downtime during rolling updates |
+| Replicas (`bank-marketing-dev`) | 1 | Single replica sufficient for staging smoke tests |
 | CPU request / limit | 250m / 500m | Logistic regression inference is lightweight |
 | Memory request / limit | 256Mi / 512Mi | `model.pkl` is small (< 10MB) |
+| Dev namespace `ResourceQuota` | 1 CPU, 512Mi | Prevents the staging workload from competing with production on shared nodes |
 
 ### Health Probes
 
@@ -428,6 +439,7 @@ flowchart TD
 | ACR Basic SKU | Sufficient for a single-service project; upgradeable if geo-replication or content trust is needed |
 | AKS with `--attach-acr` | Grants `AcrPull` via managed identity — eliminates `imagePullSecrets` and manual credential rotation |
 | 2× Standard_B2s nodes | Cost-effective burstable VMs suited to lightweight sklearn inference |
+| Namespace-based environment isolation | Two namespaces (`bank-marketing` + `bank-marketing-dev`) within the same AKS cluster — provides a real staging environment without provisioning a second cluster. Follows [Microsoft's AKS isolation guidance](https://learn.microsoft.com/en-us/azure/aks/operator-best-practices-cluster-isolation): *"Separate teams and projects using logical isolation. Minimize the number of physical AKS clusters you deploy."* |
 | `production` environment with approval gate | Prevents unreviewed code from reaching production even if branch protection is misconfigured |
 
 ### Application

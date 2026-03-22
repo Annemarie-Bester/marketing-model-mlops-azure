@@ -26,7 +26,7 @@ flowchart TD
 
 <table>
 <tr>
-<th>Pipeline 2 — Merge → <code>dev</code> (mock deployment)</th>
+<th>Pipeline 2 — Merge → <code>dev</code> (staging deployment)</th>
 <th>Pipeline 2 — Merge → <code>main</code> (production deployment)</th>
 </tr>
 <tr><td>
@@ -43,12 +43,12 @@ flowchart TD
         D_INSTALL --> D_TEST --> D_K8S
     end
 
-    subgraph CD_DEV["CD — dev (mock)"]
+    subgraph CD_DEV["CD — dev (staging)"]
         direction TB
-        DEV_BUILD["Docker build\n(no push)"]
-        DEV_SMOKE["Container smoke\n(local)"]
-        DEV_DRY["--dry-run=server"]
-        DEV_BUILD --> DEV_SMOKE --> DEV_DRY
+        DEV_BUILD["Docker build\n+ push → ACR (dev-sha)"]
+        DEV_DEPLOY["kubectl apply\nbank-marketing-dev"]
+        DEV_SMOKE["In-cluster smoke test\n(kubectl exec)"]
+        DEV_BUILD --> DEV_DEPLOY --> DEV_SMOKE
     end
 
     CI_DEV --> CD_DEV
@@ -81,7 +81,7 @@ flowchart TD
 
 </td></tr>
 <tr>
-<td><strong>Differs:</strong> Image not pushed. <code>--dry-run=server</code> validates manifests against AKS without creating resources.</td>
+<td><strong>Differs:</strong> Image pushed as <code>dev-sha</code>. Real deployment to <code>bank-marketing-dev</code> namespace — in-cluster smoke test, no external traffic.</td>
 <td><strong>Differs:</strong> Image pushed to ACR. Real deployment to AKS + live smoke test against external endpoint.</td>
 </tr>
 </table>
@@ -179,8 +179,8 @@ stages:
 
 The CI/CD pipeline is triggered by **pushes** (merges) to `dev` and `main`. It runs a shared CI stage followed by a **branch-conditional CD stage**:
 
-- **Merge → `dev`**: Mock deployment — validates the full CD flow without changing cluster state
-- **Merge → `main`**: Production deployment — builds, pushes to ACR, deploys to AKS
+- **Merge → `dev`**: Staging deployment — builds and pushes the image to ACR, deploys to the `bank-marketing-dev` namespace, and runs an in-cluster smoke test against the `ClusterIP` service
+- **Merge → `main`**: Production deployment — builds, pushes to ACR, deploys to AKS `bank-marketing` namespace, and runs a live smoke test against the external endpoint
 
 ### CI Stage — Test & Validate
 
@@ -225,56 +225,69 @@ stages:
             displayName: 'Validate K8s manifests (kubeconform)'
 ```
 
-### CD Stage — Mock Deployment (Merge → `dev`)
+### CD Stage — Staging Deployment (Merge → `dev`)
 
-On merge to `dev`, the CD stage exercises the deployment pipeline **without changing cluster state**. The image is built but not pushed to ACR. Manifests are validated against the live AKS API server using `--dry-run=server`, and the container is smoke-tested locally.
+On merge to `dev`, the CD stage builds and pushes a staging image to ACR tagged `dev-<sha>`, deploys to the `bank-marketing-dev` namespace, and runs an in-cluster smoke test against the internal `ClusterIP` service. The `bank-marketing` production namespace is untouched.
 
 ```yaml
   - stage: CD_Dev
-    displayName: 'CD — Mock Deployment (dev)'
+    displayName: 'CD — Staging Deployment (dev)'
     dependsOn: CI
     condition: and(succeeded(), eq(variables.isDev, true))
     jobs:
-      - job: MockDeploy
+      - job: StagingDeploy
         pool:
           vmImage: ubuntu-latest
         steps:
-          - script: docker build -t bank-marketing-api:dev-$(Build.SourceVersion) .
-            displayName: 'Docker build (no push)'
-
-          - script: |
-              docker run -d --name dev-smoke -p 8000:8000 \
-                bank-marketing-api:dev-$(Build.SourceVersion)
-              sleep 5
-              curl -f http://localhost:8000/health
-              docker stop dev-smoke && docker rm dev-smoke
-            displayName: 'Ephemeral container smoke test'
-
-          - task: Kubernetes@1
-            displayName: 'Validate manifests against AKS (--dry-run=server)'
+          - task: Docker@2
+            displayName: 'Build and push staging image to ACR'
             inputs:
-              connectionType: 'Azure Resource Manager'
-              azureSubscriptionEndpoint: '$(AZURE_SUBSCRIPTION)'
+              containerRegistry: '$(ACR_SERVICE_CONNECTION)'
+              repository: 'bank-marketing-api'
+              command: buildAndPush
+              Dockerfile: '**/Dockerfile'
+              tags: |
+                dev-$(Build.SourceVersion)
+
+          - task: KubernetesManifest@1
+            displayName: 'Deploy to staging namespace (bank-marketing-dev)'
+            inputs:
+              action: deploy
+              connectionType: azureResourceManager
+              azureSubscriptionConnection: '$(AZURE_SUBSCRIPTION)'
               azureResourceGroup: '$(RESOURCE_GROUP)'
               kubernetesCluster: '$(AKS_CLUSTER)'
-              command: 'apply'
-              useConfigurationFile: true
-              configuration: 'k8s/'
-              arguments: '--dry-run=server'
+              namespace: bank-marketing-dev
+              manifests: |
+                k8s/deployment-dev.yaml
+                k8s/service-dev.yaml
+              containers: |
+                $(ACR_NAME).azurecr.io/bank-marketing-api:dev-$(Build.SourceVersion)
+
+          - script: |
+              kubectl wait --for=condition=ready pod \
+                -l app=bank-marketing-api \
+                -n bank-marketing-dev \
+                --timeout=120s
+              kubectl exec -n bank-marketing-dev \
+                deploy/bank-marketing-api -- \
+                curl -sf http://localhost:8000/health
+            displayName: 'In-cluster smoke test — GET /health'
 ```
 
-**What `--dry-run=server` validates beyond `kubeconform`:**
+**What the staging deployment validates:**
 
-| Check | `kubeconform` (client-side) | `--dry-run=server` (API server) |
+| Check | `--dry-run=server` (former approach) | Staging deploy to `bank-marketing-dev` (current) |
 |---|---|---|
-| YAML syntax | Yes | Yes |
-| K8s schema compliance | Yes | Yes |
-| Admission controller policies | No | Yes |
-| Resource quota violations | No | Yes |
-| Namespace existence | No | Yes |
-| `imagePullSecrets` reference | No | Yes |
-
-The mock deployment **does not** push the image to ACR or create any Kubernetes resources. It validates that the manifests would be accepted by the cluster if applied for real.
+| YAML schema compliance | Yes | Yes |
+| Admission controller policies | Yes | Yes |
+| Resource quota violations | Yes | Yes |
+| Namespace existence | Yes | Yes |
+| Image pull from ACR succeeds | No | Yes |
+| Pod scheduling on real nodes | No | Yes |
+| Container startup (model loads) | No | Yes |
+| Health probe passes in-cluster | No | Yes |
+| K8s service routing works | No | Yes |
 
 ### CD Stage — Production Deployment (Merge → `main`)
 
@@ -365,10 +378,12 @@ flowchart LR
     subgraph Registry["ACR"]
         V1["bank-marketing-api:abc123f"]
         VL["bank-marketing-api:latest"]
+        VD["bank-marketing-api:dev-abc123f"]
     end
 
     subgraph Runtime["AKS"]
-        POD["Pod running<br/>FastAPI + Uvicorn"]
+        POD_PROD["Pod (bank-marketing)<br/>FastAPI + Uvicorn"]
+        POD_DEV["Pod (bank-marketing-dev)<br/>FastAPI + Uvicorn"]
     end
 
     CODE --> IMG
@@ -377,7 +392,9 @@ flowchart LR
     REQS --> IMG
     IMG --> V1
     IMG --> VL
-    V1 --> POD
+    IMG --> VD
+    V1 --> POD_PROD
+    VD --> POD_DEV
 ```
 
 ### What goes into the Docker image
@@ -414,7 +431,7 @@ flowchart LR
 
 ## Pipeline Conditions
 
-This project uses a **single deployment environment** (one AKS cluster) with a **two-pipeline architecture**. Pre-merge checks are identical for both target branches; only the post-merge CD stage differs. See [Git Workflow — Single-Environment Strategy](git-workflow.md#single-environment-strategy) for rationale.
+This project uses **namespace-based environment isolation** — two Kubernetes namespaces within the same AKS cluster (`bank-marketing` for production, `bank-marketing-dev` for staging) — combined with a two-pipeline CI/CD architecture. Pre-merge checks are identical for both target branches; only the post-merge CD stage differs.
 
 ### Pipeline 1: `pr-validation.yml` (Branch Policy)
 
@@ -427,18 +444,18 @@ PR validation is **identical** for both target branches — no conditions, no br
 
 ### Pipeline 2: `azure-pipelines.yml` (Push trigger)
 
-| Trigger | Tests | K8s Validation | Docker Build | Container Smoke | Push to ACR | Deploy to AKS |
+| Trigger | Tests | K8s Validation | Docker Build | Push to ACR | Deploy to AKS | Smoke Test |
 |---|---|---|---|---|---|---|
-| Merge → `dev` | Yes | Yes (kubeconform + `--dry-run=server`) | Yes (no push) | Yes (local) | No | No (`--dry-run=server` only) |
-| Merge → `main` | Yes | Yes (kubeconform) | Yes (build + push) | No (covered by live smoke) | Yes (`<sha>` + `latest`) | Yes (+ live smoke test) |
+| Merge → `dev` | Yes | Yes (kubeconform) | Yes | Yes (`dev-<sha>`) | Yes (`bank-marketing-dev`) | In-cluster (`kubectl exec`) |
+| Merge → `main` | Yes | Yes (kubeconform) | Yes | Yes (`<sha>` + `latest`) | Yes (`bank-marketing`) | Live (external IP) |
 
-The only branching logic in the CI/CD pipeline is the `condition:` on the two mutually exclusive CD stages — `CD_Dev` for mock deployment, `CD_Main` for production. The CI stage always runs.
+The only branching logic in the CI/CD pipeline is the `condition:` on the two mutually exclusive CD stages. The CI stage always runs on both branches.
 
 ---
 
 ## Future Enhancements
 
-Deployment simulation strategies (namespace-based isolation, ephemeral per-PR Review Apps) and other planned improvements are documented in [docs/future-enhancements.md](future-enhancements.md).
+Ephemeral per-PR Review Apps and other planned improvements beyond the current namespace-isolation model are documented in [docs/future-enhancements.md](future-enhancements.md).
 
 ---
 
