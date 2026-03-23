@@ -164,11 +164,40 @@ sudo mv /tmp/kind /usr/local/bin/kind
 kind version
 
 # Create a single-node cluster
-# kind-config.yaml sets cgroupDriver: cgroupfs — required for WSL2 + DooD devcontainer environments
-kind create cluster --name bank-marketing --config kind-config.yaml
+# --retain is required in DooD: without it, kind deletes the node when its localhost
+# readiness check times out, preventing manual bootstrap (admin.conf missing error).
+kind create cluster --config kind-config.yaml --retain
+```
 
-# Verify the cluster is running
-kubectl cluster-info --context kind-bank-marketing
+> **DooD networking note:** In a Docker-outside-of-Docker devcontainer, `kind create cluster` always exits with an error (either `connection refused` or `failed to remove control plane taint: stat /etc/kubernetes/admin.conf: no such file or directory`). This is not a real failure — kubeadm and the API server complete successfully inside the container. The error occurs because kind verifies readiness by connecting to `localhost:<port>`, which resolves to the devcontainer's own localhost, not the host where the kind node port is published. Without `--retain`, kind deletes the node before you can manually bootstrap, producing the `admin.conf` missing error. With `--retain`, the node survives and the cluster is fully usable via the steps below.
+
+```bash
+# Export kubeconfig (ignore any error about the cluster not being ready)
+kind export kubeconfig --name bm-local
+
+# Get the kind node's Docker-network IP
+NODE_IP=$(docker inspect bm-local-control-plane \
+  --format '{{.NetworkSettings.Networks.kind.IPAddress}}')
+echo "Node IP: $NODE_IP"
+
+# Patch kubeconfig to use the container's internal IP instead of localhost
+kubectl config set-cluster kind-bm-local --server=https://${NODE_IP}:6443
+
+# Install the bundled CNI plugin
+# kind can't do this itself due to DooD — the manifest is baked into the node image
+docker exec bm-local-control-plane cat /kind/manifests/default-cni.yaml \
+  | sed 's/{{ .PodSubnet }}/10.244.0.0\/24/' \
+  | kubectl apply -f -
+
+# Install the default storage class
+docker exec bm-local-control-plane cat /kind/manifests/default-storage.yaml \
+  | kubectl apply -f -
+
+# Wait for node to become Ready (usually < 30 s)
+kubectl wait --for=condition=Ready node --all --timeout=120s
+
+# Verify
+kubectl cluster-info --context kind-bm-local
 kubectl get nodes
 ```
 
@@ -177,7 +206,7 @@ kubectl get nodes
 The AKS cluster uses two namespaces — `bank-marketing` (production, deployed from `main`) and `bank-marketing-dev` (staging, deployed from `dev`). The local kind cluster mirrors this structure exactly, so you can validate both namespace configurations and the staging smoke-test flow before pushing to AKS.
 
 ```
-kind cluster: bank-marketing
+kind cluster: bm-local
 ├── namespace: bank-marketing        ← production (k8s/deployment.yaml + k8s/service.yaml)
 └── namespace: bank-marketing-dev    ← staging    (k8s/deployment-dev.yaml + k8s/service-dev.yaml + k8s/quota-dev.yaml)
 ```
@@ -189,7 +218,7 @@ Once you have built a Docker image (see [Section 8](#8-docker-build)), load it i
 ```bash
 # Load local image into kind (avoids needing a registry)
 # A single local image is used for both namespaces — on AKS, dev-<sha> and <sha> are separate ACR tags
-kind load docker-image bank-marketing-api:local --name bank-marketing
+kind load docker-image bank-marketing-api:local --name bm-local
 
 # Create both namespaces
 kubectl create namespace bank-marketing
@@ -273,7 +302,7 @@ kubectl delete -f k8s/deployment.yaml -f k8s/service.yaml -n bank-marketing
 kubectl delete -f k8s/deployment-dev.yaml -f k8s/service-dev.yaml -f k8s/quota-dev.yaml -n bank-marketing-dev
 
 # Or delete the cluster entirely
-kind delete cluster --name bank-marketing
+kind delete cluster --name bm-local
 ```
 
 ### Moving to AKS
@@ -299,7 +328,7 @@ kubectl apply -f k8s/quota-dev.yaml -n bank-marketing-dev
 kubectl apply -f k8s/deployment-dev.yaml -f k8s/service-dev.yaml -n bank-marketing-dev
 
 # Switch back to kind for local development
-kubectl config use-context kind-bank-marketing
+kubectl config use-context kind-bm-local
 ```
 
 > **Note:** Before applying to AKS, update the `image:` fields in `k8s/deployment.yaml` and `k8s/deployment-dev.yaml` to point to ACR (e.g. `bankmarketingacr.azurecr.io/bank-marketing-api:latest` and `bankmarketingacr.azurecr.io/bank-marketing-api:dev-latest`) rather than the local `bank-marketing-api:local` tag used in kind. In practice the CI/CD pipeline manages this substitution automatically via the `KubernetesManifest@1` task's `containers:` input.
@@ -644,8 +673,8 @@ print(response.json())       # {"prediction": ..., "probability": ..., "label": 
 | Health check | `curl -s http://localhost:8000/health` |
 | Predict request | `curl -s -X POST http://localhost:8000/predict -H "Content-Type: application/json" -d '{...}'` |
 | Validate K8s manifests | `kubeconform -summary -strict k8s/` |
-| Start kind cluster | `kind create cluster --name bank-marketing --config kind-config.yaml` |
-| Load image into kind | `kind load docker-image bank-marketing-api:local --name bank-marketing` |
+| Start kind cluster | `kind create cluster --config kind-config.yaml --retain` (see DooD note in Section 5) |
+| Load image into kind | `kind load docker-image bank-marketing-api:local --name bm-local` |
 | Create namespaces | `kubectl create namespace bank-marketing && kubectl create namespace bank-marketing-dev` |
 | Deploy to production namespace | `kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -n bank-marketing` |
 | Deploy to staging namespace | `kubectl apply -f k8s/quota-dev.yaml -f k8s/deployment-dev.yaml -f k8s/service-dev.yaml -n bank-marketing-dev` |
@@ -653,9 +682,9 @@ print(response.json())       # {"prediction": ..., "probability": ..., "label": 
 | Port-forward staging | `kubectl port-forward svc/bank-marketing-api 8001:8000 -n bank-marketing-dev` |
 | Simulate CD_Dev smoke test | `kubectl exec -n bank-marketing-dev deploy/bank-marketing-api -- curl -sf http://localhost:8000/health` |
 | Check ResourceQuota usage | `kubectl describe resourcequota bank-marketing-dev-quota -n bank-marketing-dev` |
-| Delete kind cluster | `kind delete cluster --name bank-marketing` |
+| Delete kind cluster | `kind delete cluster --name bm-local` |
 | Switch kubectl to AKS | `az aks get-credentials --resource-group rg-bank-marketing --name bank-marketing-aks` |
-| Switch kubectl to kind | `kubectl config use-context kind-bank-marketing` |
+| Switch kubectl to kind | `kubectl config use-context kind-bm-local` |
 
 ---
 
