@@ -21,7 +21,8 @@ Leave a `> Note:` line beneath an entry to record why it was useful.
 8. [Cluster Isolation & Deployment Strategies](#cluster-isolation--deployment-strategies)
 9. [Local Kubernetes Development (kind)](#local-kubernetes-development-kind)
 10. [Containerisation & Docker](#containerisation--docker)
-11. [AI Tools](#ai-tools)
+11. [Model Monitoring & Drift Detection](#model-monitoring--drift-detection)
+12. [AI Tools](#ai-tools)
 
 ---
 
@@ -235,6 +236,39 @@ Leave a `> Note:` line beneath an entry to record why it was useful.
 
 [67]. Kubernetes. *Objects In Kubernetes*. https://kubernetes.io/docs/concepts/overview/working-with-objects/. 2024.
 > Official documentation on the Kubernetes object model — covers object spec and status, manifest structure (`apiVersion`, `kind`, `metadata`, `spec`), required fields, and server-side field validation. Foundational reference for understanding the Deployment, Service, and ResourceQuota manifests in `k8s/`.
+
+---
+
+## Model Monitoring & Drift Detection
+
+*Topics: data drift, prediction drift, data quality monitoring, Azure ML Model Monitor, Azure Event Grid integration, Azure Monitor alerts, event-driven retraining triggers.*
+
+[68]. Microsoft. *Azure Machine Learning model monitoring*. https://learn.microsoft.com/en-us/azure/machine-learning/concept-model-monitoring. 2026.
+> Official documentation for Azure ML Model Monitor (v2) — covers built-in monitoring signals (data drift, prediction drift, data quality, feature attribution drift), supported metrics (PSI, Jensen-Shannon Distance, Wasserstein Distance), lookback windows, and Event Grid integration for event-driven actions. The primary reference for the drift detection → retraining trigger chain described in `docs/future-enhancements.md`.
+
+[69]. Microsoft. *Azure Monitor alerts overview*. https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/alerts-overview. 2025.
+> Comprehensive reference for Azure Monitor alert types (metric alerts, log search alerts, activity log alerts), action groups (email, webhook, Azure Function, Logic App), stateful vs stateless behaviour, and role-based access control for alerts. Referenced as the alerting layer in the drift detection architecture.
+
+[70]. Microsoft. *Azure Machine Learning — Use Event Grid*. https://learn.microsoft.com/en-us/azure/machine-learning/how-to-use-event-grid. 2025.
+> Documents how to subscribe to Azure ML workspace events via Azure Event Grid — including monitoring run completed events that can trigger downstream automation. The integration point that connects drift detection to an Azure Function → ADO Pipelines REST API retraining trigger.
+
+---
+
+## AKS-Based Training & Kubernetes Jobs
+
+*Topics: Kubernetes Jobs, CronJobs, AKS training workloads, GPU node pools, Blob Storage artifact management, run-to-completion batch processing on AKS.*
+
+[74]. Kubernetes. *Jobs*. https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/. 2025.
+> Official Kubernetes documentation for the Job controller — covers `backoffLimit`, `activeDeadlineSeconds`, `ttlSecondsAfterFinished`, `completions`, `parallelism`, pod failure handling, and cleanup policies. The foundational reference for running training as a run-to-completion workload on AKS.
+
+[75]. Microsoft. *Kubernetes workload management on AKS*. https://learn.microsoft.com/en-us/azure/aks/concepts-clusters-workloads#jobs-and-cron-jobs. 2025.
+> AKS-specific documentation for Jobs and CronJobs — covers node pool selection for batch workloads, resource requests/limits, integration with Azure Monitor for Job observability, and scheduling patterns. Extends [74] with Azure-specific guidance.
+
+[76]. Microsoft. *Use GPUs for compute-intensive workloads on AKS*. https://learn.microsoft.com/en-us/azure/aks/gpu-cluster. 2025.
+> GPU node pool provisioning on AKS — covers NC/ND-series VM sizes, NVIDIA device plugin, `nvidia.com/gpu` resource requests, and node pool taints/tolerations. The prerequisite for GPU-accelerated training Jobs when model complexity graduates beyond CPU-only workloads.
+
+[77]. Microsoft. *Azure Blob Storage documentation*. https://learn.microsoft.com/en-us/azure/storage/blobs/. 2025.
+> Core Blob Storage reference — upload, download, versioning, soft delete, managed identity access, and lifecycle management. The artifact store for training data input, model output, and the registry manifest in the AKS-based training architecture.
 
 ---
 

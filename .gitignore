@@ -38,6 +38,7 @@ Thumbs.db
 # Logs
 logs/
 *.log
+GAPS.md
 
 # Environment variables
 .env

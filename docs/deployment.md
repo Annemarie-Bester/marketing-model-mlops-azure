@@ -100,7 +100,7 @@ spec:
 | Field | Value | Rationale |
 |---|---|---|
 | `replicas: 2` | Two pods for basic availability | Single pod = downtime during restarts |
-| `containerPort: 8000` | Matches `config.yaml` API port | Consistent with `uvicorn` default in config |
+| `containerPort: 8000` | Matches Uvicorn listening port | Consistent with `CMD` in `Dockerfile.infer` |
 | CPU request: 250m | Quarter-core baseline | Logistic regression inference is lightweight |
 | Memory request: 256Mi | Sufficient for sklearn model in memory | `model.pkl` is small (< 10MB) |
 | CPU limit: 500m | Cap burst CPU usage | Prevents noisy-neighbour issues |
@@ -271,11 +271,19 @@ sequenceDiagram
 
 ## Container Lifecycle
 
+The project uses a **dual-container architecture** — a training container produces `model.pkl`, and the CI pipeline bakes it into an inference container that is deployed to AKS. See [docs/architecture.md § Container Architecture](architecture.md#container-architecture) for the full design.
+
 ```mermaid
 flowchart TD
-    BUILD["CI: Docker build"] --> PUSH_Q{"Branch?"}
-    PUSH_Q -->|"main"| PUSH_PROD["Push to ACR<br/>tags: sha + latest"]
-    PUSH_Q -->|"dev"| PUSH_DEV["Push to ACR<br/>tag: dev-sha"]
+    TRAIN_BUILD["CI: Build training image\n(Dockerfile.train)"]
+    TRAIN_RUN["CI: Run training container\n→ model.pkl + metrics.json"]
+    INFER_BUILD["CI: Build inference image\n(Dockerfile.infer — COPY model.pkl)"]
+
+    TRAIN_BUILD --> TRAIN_RUN --> INFER_BUILD
+
+    INFER_BUILD --> PUSH_Q{"Branch?"}
+    PUSH_Q -->|"main"| PUSH_PROD["Push to ACR\ntags: buildId + latest"]
+    PUSH_Q -->|"dev"| PUSH_DEV["Push to ACR\ntag: dev-buildId + dev-latest"]
 
     PUSH_PROD --> DEPLOY_PROD["kubectl apply<br/>namespace: bank-marketing"]
     PUSH_DEV --> DEPLOY_DEV["kubectl apply<br/>namespace: bank-marketing-dev"]

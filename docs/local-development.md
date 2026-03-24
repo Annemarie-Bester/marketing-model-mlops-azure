@@ -72,11 +72,13 @@ The Dev Container includes:
 
 > **Notebook:** [notebooks/01_devcontainer_setup.ipynb](../notebooks/01_devcontainer_setup.ipynb) — Section 2 runs the pip install and Section 3 verifies all imports, Section 4 validates project structure, Section 5 checks config.
 
-Dependencies are installed automatically when the Dev Container starts (`postCreateCommand`). To install manually or after updating `requirements.txt`:
+Dependencies are installed automatically when the Dev Container starts (`postCreateCommand`). To install manually or after updating requirements files:
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-local.txt
 ```
+
+This installs the full development environment — `requirements.txt` (core ML), `requirements-infer.txt` (inference/API), plus dev tools like pytest, jupyter, and matplotlib.
 
 Key packages:
 | Package | Purpose |
@@ -233,42 +235,67 @@ docker ps
 
 ## 7. Docker Build
 
-> **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 2–3 verify the model artifact exists and build the Docker image.
+> **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 2–3 verify the model artifact exists and build the Docker images.
 
-Build the container image locally. Since the project does not yet have a Dockerfile, create one at the repository root first.
+This project uses a **dual-container architecture**: a training container (`Dockerfile.train`) that produces `model.pkl`, and an inference container (`Dockerfile.infer`) that bakes the model in for serving. The local build mirrors the CI pipeline flow.
 
-### Build the Image
+### Build the Training Image
 
 ```bash
-# Build with a local tag
-docker build -t bank-marketing-api:local .
+docker build -f Dockerfile.train -t bank-marketing-train:local .
+```
 
-# Verify the image was created
-docker images | grep bank-marketing-api
+### Run Training to Produce model.pkl
+
+```bash
+mkdir -p artifacts
+docker run --rm \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/artifacts:/app/artifacts \
+  bank-marketing-train:local
+```
+
+This mounts `data/` (input) and `artifacts/` (output) from your workspace. After the run, `artifacts/model.pkl` and `artifacts/metrics.json` are available on your local file system.
+
+### Build the Inference Image
+
+The inference image requires `artifacts/model.pkl` to exist — it is `COPY`'d at build time:
+
+```bash
+docker build -f Dockerfile.infer -t bank-marketing-api:local .
+```
+
+### Verify Images
+
+```bash
+docker images | grep bank-marketing
 ```
 
 ### Build Tips
 
 | Flag | Purpose | Example |
 |---|---|---|
+| `-f` | Specify Dockerfile | `-f Dockerfile.train` or `-f Dockerfile.infer` |
 | `-t` | Tag the image | `-t bank-marketing-api:local` |
-| `--no-cache` | Force a clean rebuild | `docker build --no-cache -t bank-marketing-api:local .` |
+| `--no-cache` | Force a clean rebuild | `docker build --no-cache -f Dockerfile.infer -t bank-marketing-api:local .` |
 | `--progress=plain` | Show full build output | Useful for debugging failed builds |
 
 ---
 
 ## 8. Local Container Smoke Test
 
-> **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 4–10 run the container, health check, prediction tests, edge cases, scripted pass/fail smoke test, log inspection, and cleanup.
+> **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 4–10 run the inference container, health check, prediction tests, edge cases, scripted pass/fail smoke test, log inspection, and cleanup.
 
-Run the built image and verify the API starts correctly and responds to requests.
+Run the inference image (built in [Section 7](#7-docker-build)) and verify the API starts correctly and responds to requests.
 
 ### Start the Container
 
 > **DooD networking:** In Docker-outside-of-Docker, `-p 8000:8000` publishes to the *host machine's* localhost — not reachable via `curl` from inside the devcontainer. Use `--network container:$(hostname)` to share the devcontainer's network namespace instead.
 
+> **API key authentication:** The `/predict` endpoint requires an `X-API-Key` header when the `API_KEY` env var is set. Pass `-e API_KEY=<key>` to the container and include `-H "X-API-Key: <key>"` in prediction requests. The `/health` endpoint remains unauthenticated (required for K8s probes).
+
 ```bash
-docker run -d --name smoke-test --network container:$(hostname) bank-marketing-api:local
+docker run -d --name smoke-test --network container:$(hostname) -e API_KEY=test-local-key bank-marketing-api:local
 ```
 
 ### Run Smoke Tests
@@ -284,6 +311,7 @@ curl -s http://localhost:8000/health
 # Prediction request
 curl -s -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: test-local-key" \
   -d '{
     "age": 35,
     "job": "management",
@@ -324,7 +352,7 @@ Combine health check and prediction into a single pass/fail script:
 set -e
 
 echo "Starting container..."
-docker run -d --name smoke-test --network container:$(hostname) bank-marketing-api:local
+docker run -d --name smoke-test --network container:$(hostname) -e API_KEY=test-local-key bank-marketing-api:local
 sleep 5
 
 echo "Health check..."
@@ -334,6 +362,7 @@ echo "$HEALTH" | grep -q '"healthy"' || { echo "FAIL: health check"; exit 1; }
 echo "Prediction test..."
 PRED=$(curl -sf -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: test-local-key" \
   -d '{"age":35,"job":"management","marital":"married","education":"tertiary","default":"no","balance":1500.0,"housing":"yes","loan":"no","contact":"cellular","day":15,"month":"may","duration":250.0,"campaign":1,"pdays":-1,"previous":0,"poutcome":"unknown"}')
 echo "$PRED" | grep -q '"prediction"' || { echo "FAIL: predict endpoint"; exit 1; }
 
@@ -447,6 +476,12 @@ kind load docker-image bank-marketing-api:local --name bm-local
 # Create both namespaces
 kubectl create namespace bank-marketing
 kubectl create namespace bank-marketing-dev
+
+# Create API key secrets in both namespaces (required for /predict authentication)
+kubectl create secret generic bank-marketing-api-key \
+  --from-literal=API_KEY=test-local-key -n bank-marketing
+kubectl create secret generic bank-marketing-api-key \
+  --from-literal=API_KEY=test-local-key -n bank-marketing-dev
 
 # --- Production namespace ---
 # Apply manifests, then immediately scale to 0 to prevent stuck ACR-image pods
@@ -753,14 +788,16 @@ print(response.json())       # {"prediction": ..., "probability": ..., "label": 
 
 | Task | Command |
 |---|---|
-| Install dependencies | `pip install -r requirements.txt` |
+| Install dependencies | `pip install -r requirements-local.txt` |
 | Train model | `python main.py train` |
 | Batch predict | `python main.py predict --input <csv> --output <csv>` |
 | Run all tests | `python -m pytest tests/ -v --tb=short` |
 | Validate K8s manifests | `kubeconform -summary -strict k8s/` |
 | Start API server | `uvicorn src.api.app:app --host 0.0.0.0 --port 8000` |
-| Build Docker image | `docker build -t bank-marketing-api:local .` |
-| Run container | `docker run -d --name smoke-test --network container:$(hostname) bank-marketing-api:local` |
+| Build training image | `docker build -f Dockerfile.train -t bank-marketing-train:local .` |
+| Run training container | `docker run --rm -v $(pwd)/data:/app/data -v $(pwd)/artifacts:/app/artifacts bank-marketing-train:local` |
+| Build inference image | `docker build -f Dockerfile.infer -t bank-marketing-api:local .` |
+| Run inference container | `docker run -d --name smoke-test --network container:$(hostname) bank-marketing-api:local` |
 | Health check | `curl -s http://localhost:8000/health` |
 | Predict request | `curl -s -X POST http://localhost:8000/predict -H "Content-Type: application/json" -d '{...}'` |
 | Start kind cluster | `kind create cluster --config kind-config.yaml --retain` (see DooD note in Section 9) |

@@ -6,8 +6,14 @@
     "ghcr.io/devcontainers/features/azure-cli:1": {},
     "ghcr.io/devcontainers-contrib/features/kind:1": {}
   },
+  "remoteEnv": {
+    "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
+  },
   "postCreateCommand": "pip install -r requirements-local.txt",
-  /*"forwardPorts": [8000, 8888],
+  "forwardPorts": [
+    8000,
+    8888
+  ],
   "portsAttributes": {
     "8000": {
       "label": "FastAPI",
@@ -17,7 +23,7 @@
       "label": "Jupyter",
       "onAutoForward": "notify"
     }
-  },*/
+  },
   "customizations": {
     "vscode": {
       "extensions": [

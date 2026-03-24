@@ -31,9 +31,6 @@ docs/
 *.md
 REFERENCES.md
 
-# Training entry point — serving image only needs src/ and the artifact
-main.py
-
 # CI/CD pipeline definitions
 .azure/
 azure-pipelines*.yml

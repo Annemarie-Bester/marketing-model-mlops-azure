@@ -19,7 +19,8 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.config import load_config
@@ -91,6 +92,23 @@ class PredictResponse(BaseModel):
     label: str
 
 
+# --- API key authentication ---
+
+
+def verify_api_key(x_api_key: Optional[str] = Header(default=None)):
+    """Check X-API-Key header against the API_KEY env var.
+
+    If API_KEY is not set (empty), authentication is skipped —
+    allows local development without a key.
+    """
+    api_key = os.environ.get("API_KEY", "")
+    if not api_key:
+        return
+    if x_api_key != api_key:
+        raise HTTPException(
+            status_code=401, detail="Invalid or missing API key")
+
+
 # --- App lifecycle: load model once at startup ---
 
 
@@ -116,10 +134,16 @@ app = FastAPI(
 @app.get("/health")
 def health():
     """Liveness/readiness probe for AKS."""
+    pipeline = getattr(app.state, "pipeline", None)
+    if pipeline is None:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "reason": "model not loaded"},
+        )
     return {"status": "healthy"}
 
 
-@app.post("/predict", response_model=PredictResponse)
+@app.post("/predict", response_model=PredictResponse, dependencies=[Depends(verify_api_key)])
 def predict(request: PredictRequest):
     """Score a single customer record.
 
