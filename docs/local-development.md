@@ -2,6 +2,24 @@
 
 Step-by-step instructions for running and testing every component of the project locally — from environment setup through containerised smoke tests.
 
+> **Section order** mirrors the CI/CD pipeline stages documented in [ci-cd-pipeline.md](ci-cd-pipeline.md): install → test → validate manifests → Docker build → container smoke test → Kubernetes deploy.
+
+---
+
+## Interactive Notebooks
+
+The fastest way to work through local development is to run the notebooks in `notebooks/`. Each notebook corresponds to a section below, executes the exact commands documented here, and lets you modify inputs cell-by-cell without leaving VS Code.
+
+| Notebook | Covers | Sections below |
+|---|---|---|
+| [notebooks/01_devcontainer_setup.ipynb](../notebooks/01_devcontainer_setup.ipynb) | Dev Container verification, dependency install, project structure, config check | §1, §2 |
+| [notebooks/03_ml_pipeline.ipynb](../notebooks/03_ml_pipeline.ipynb) | Train, batch predict, pytest suite, direct inference | §3, §4, §10 |
+| [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) | Docker access, image build, container smoke tests, edge cases | §6, §7, §8 |
+| [notebooks/05_kubernetes_setup.ipynb](../notebooks/05_kubernetes_setup.ipynb) | kubectl/kind install, cluster bootstrap, manifest validation, deploy to both namespaces, CD_Dev simulation | §5, §9 |
+| [notebooks/06_cleanup.ipynb](../notebooks/06_cleanup.ipynb) | Remove all local resources (container, image, kind cluster, artifacts, binaries) | — |
+
+Run notebooks in order: `01` → `02` → `03` → `04` → `05`. Run `06` to tear everything down. The reference commands in the sections below remain the authoritative source; the notebooks simply provide an interactive execution layer on top.
+
 ---
 
 ## Prerequisites
@@ -17,6 +35,8 @@ All other tooling (Python 3.12, pip, Azure CLI, Docker CLI) is pre-installed ins
 ---
 
 ## 1. Start the Dev Container
+
+> **Notebook:** [notebooks/01_devcontainer_setup.ipynb](../notebooks/01_devcontainer_setup.ipynb) — run Sections 1–2 to verify the Dev Container and check all tools are present.
 
 The project includes a Dev Container configuration at `.devcontainer/devcontainer.json` that provides a consistent, pre-configured development environment.
 
@@ -50,6 +70,8 @@ The Dev Container includes:
 
 ## 2. Install Dependencies
 
+> **Notebook:** [notebooks/01_devcontainer_setup.ipynb](../notebooks/01_devcontainer_setup.ipynb) — Section 2 runs the pip install and Section 3 verifies all imports, Section 4 validates project structure, Section 5 checks config.
+
 Dependencies are installed automatically when the Dev Container starts (`postCreateCommand`). To install manually or after updating `requirements.txt`:
 
 ```bash
@@ -68,6 +90,8 @@ Key packages:
 ---
 
 ## 3. Run the ML Pipeline
+
+> **Notebook:** [notebooks/03_ml_pipeline.ipynb](../notebooks/03_ml_pipeline.ipynb) — Sections 1–3 train the model, inspect the artifact, and run batch predictions.
 
 ### Train
 
@@ -98,6 +122,8 @@ python main.py predict --input data/raw/bank_marketing_data.csv --output data/re
 ---
 
 ## 4. Run Tests with pytest
+
+> **Notebook:** [notebooks/03_ml_pipeline.ipynb](../notebooks/03_ml_pipeline.ipynb) — Sections 4–5 run the full test suite and individual test modules. Section 6 provides direct model inference for debugging.
 
 The project uses pytest with fixtures defined in `tests/conftest.py`. A trained model artifact (`artifacts/model.pkl`) is required for API tests.
 
@@ -133,7 +159,195 @@ python -m pytest tests/test_api.py -v
 
 ---
 
-## 5. Local Kubernetes Setup
+## 5. Validate K8s Manifests (kubeconform)
+
+> **Notebook:** [notebooks/05_kubernetes_setup.ipynb](../notebooks/05_kubernetes_setup.ipynb) — Section 5 installs kubeconform and validates all `k8s/` manifests.
+
+[kubeconform](https://github.com/yannh/kubeconform) validates Kubernetes manifests against the official JSON schemas — the same check that runs in CI.
+
+### Install
+
+```bash
+curl -sLO https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+tar xzf kubeconform-linux-amd64.tar.gz
+sudo mv kubeconform /usr/local/bin/
+rm -f kubeconform-linux-amd64.tar.gz LICENSE
+```
+
+### Validate Manifests
+
+```bash
+# Validate all YAML files in the k8s/ directory
+kubeconform -summary -strict k8s/
+
+# Validate a specific file
+kubeconform -strict k8s/deployment.yaml
+
+# Validate with verbose output (shows each resource checked)
+kubeconform -summary -strict -verbose k8s/
+```
+
+Expected output for valid manifests:
+```
+Summary: 2 resources found parsing k8s/ - Valid: 2, Invalid: 0, Errors: 0, Skipped: 0
+```
+
+### What kubeconform Catches
+
+| Check | Example |
+|---|---|
+| YAML syntax errors | Missing colons, bad indentation |
+| Invalid field names | `replics` instead of `replicas` |
+| Wrong field types | `replicas: "2"` (string instead of int) |
+| Missing required fields | Deployment without `selector` |
+
+> **Note:** kubeconform performs client-side schema validation only. It does not check cluster-specific constraints like admission policies or resource quotas — those require `kubectl --dry-run=server` against a live cluster (see [Section 9](#9-local-kubernetes-setup)).
+
+---
+
+## 6. Set Up Docker Locally
+
+> **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Section 1 verifies Docker access and troubleshoots common issues.
+
+The Dev Container is configured with **Docker-outside-of-Docker**, meaning the Docker CLI inside the container communicates with the Docker daemon on your host machine. No additional setup is required if Docker Desktop is running on the host.
+
+### Verify Docker Access
+
+```bash
+# Confirm the Docker CLI can reach the daemon
+docker info
+
+# Check running containers
+docker ps
+```
+
+### Troubleshooting
+
+| Issue | Cause | Fix |
+|---|---|---|
+| `Cannot connect to the Docker daemon` | Docker Desktop not running on host | Start Docker Desktop on the host machine |
+| `permission denied` | Socket permissions | Restart the Dev Container — the feature configures socket access on startup |
+| `docker: command not found` | Feature not installed | Rebuild the Dev Container (`Dev Containers: Rebuild Container`) |
+
+---
+
+## 7. Docker Build
+
+> **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 2–3 verify the model artifact exists and build the Docker image.
+
+Build the container image locally. Since the project does not yet have a Dockerfile, create one at the repository root first.
+
+### Build the Image
+
+```bash
+# Build with a local tag
+docker build -t bank-marketing-api:local .
+
+# Verify the image was created
+docker images | grep bank-marketing-api
+```
+
+### Build Tips
+
+| Flag | Purpose | Example |
+|---|---|---|
+| `-t` | Tag the image | `-t bank-marketing-api:local` |
+| `--no-cache` | Force a clean rebuild | `docker build --no-cache -t bank-marketing-api:local .` |
+| `--progress=plain` | Show full build output | Useful for debugging failed builds |
+
+---
+
+## 8. Local Container Smoke Test
+
+> **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 4–10 run the container, health check, prediction tests, edge cases, scripted pass/fail smoke test, log inspection, and cleanup.
+
+Run the built image and verify the API starts correctly and responds to requests.
+
+### Start the Container
+
+> **DooD networking:** In Docker-outside-of-Docker, `-p 8000:8000` publishes to the *host machine's* localhost — not reachable via `curl` from inside the devcontainer. Use `--network container:$(hostname)` to share the devcontainer's network namespace instead.
+
+```bash
+docker run -d --name smoke-test --network container:$(hostname) bank-marketing-api:local
+```
+
+### Run Smoke Tests
+
+```bash
+# Wait for the container to start (model loading)
+sleep 5
+
+# Health check
+curl -s http://localhost:8000/health
+# Expected: {"status":"healthy"}
+
+# Prediction request
+curl -s -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "age": 35,
+    "job": "management",
+    "marital": "married",
+    "education": "tertiary",
+    "default": "no",
+    "balance": 1500.0,
+    "housing": "yes",
+    "loan": "no",
+    "contact": "cellular",
+    "day": 15,
+    "month": "may",
+    "duration": 250.0,
+    "campaign": 1,
+    "pdays": -1,
+    "previous": 0,
+    "poutcome": "unknown"
+  }'
+# Expected: {"prediction":...,"probability":...,"label":"..."}
+
+# Check container logs for errors
+docker logs smoke-test
+```
+
+### Clean Up
+
+```bash
+docker stop smoke-test
+docker rm smoke-test
+```
+
+### Scripted Smoke Test
+
+Combine health check and prediction into a single pass/fail script:
+
+```bash
+#!/bin/bash
+set -e
+
+echo "Starting container..."
+docker run -d --name smoke-test --network container:$(hostname) bank-marketing-api:local
+sleep 5
+
+echo "Health check..."
+HEALTH=$(curl -sf http://localhost:8000/health)
+echo "$HEALTH" | grep -q '"healthy"' || { echo "FAIL: health check"; exit 1; }
+
+echo "Prediction test..."
+PRED=$(curl -sf -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"age":35,"job":"management","marital":"married","education":"tertiary","default":"no","balance":1500.0,"housing":"yes","loan":"no","contact":"cellular","day":15,"month":"may","duration":250.0,"campaign":1,"pdays":-1,"previous":0,"poutcome":"unknown"}')
+echo "$PRED" | grep -q '"prediction"' || { echo "FAIL: predict endpoint"; exit 1; }
+
+echo "PASS: All smoke tests passed"
+echo "Response: $PRED"
+
+docker stop smoke-test && docker rm smoke-test
+```
+
+---
+
+## 9. Local Kubernetes Setup
+
+> **Notebook:** [notebooks/05_kubernetes_setup.ipynb](../notebooks/05_kubernetes_setup.ipynb) — run top-to-bottom to install kubectl/kind, bootstrap the cluster, deploy to both namespaces, validate the ResourceQuota, and simulate the CD_Dev smoke test.
 
 For validating Kubernetes manifests and testing deployments locally without an AKS cluster.
 
@@ -193,6 +407,10 @@ docker exec bm-local-control-plane cat /kind/manifests/default-cni.yaml \
 docker exec bm-local-control-plane cat /kind/manifests/default-storage.yaml \
   | kubectl apply -f -
 
+# Remove the control-plane taint so workload pods can schedule on the single node
+# (kind normally does this automatically, but the DooD error prevents it)
+kubectl taint nodes --all node-role.kubernetes.io/control-plane- 2>/dev/null || true
+
 # Wait for node to become Ready (usually < 30 s)
 kubectl wait --for=condition=Ready node --all --timeout=120s
 
@@ -213,7 +431,13 @@ kind cluster: bm-local
 
 ### Deploy Locally
 
-Once you have built a Docker image (see [Section 8](#8-docker-build)), load it into the kind cluster and deploy to both namespaces:
+Once you have built a Docker image (see [Section 7](#7-docker-build)), load it into the kind cluster and deploy to both namespaces.
+
+> **Image override required:** The `k8s/deployment.yaml` and `k8s/deployment-dev.yaml` manifests reference ACR images (`bankmarketingacr.azurecr.io/bank-marketing-api:latest` and `:dev-latest`) because they are the source-of-truth for AKS deployments. The CI/CD pipeline substitutes the correct image tag at deploy time via the `KubernetesManifest@1` task's `containers:` input — the YAML files themselves are never modified in Git.
+>
+> In kind there is no ACR registry, so pods will stay in **Pending** (with `ErrImageNeverPull` or `ImagePullBackOff`) unless you override the image after applying the manifests. **Do not edit the YAML files** — the ACR references are correct for production.
+>
+> **Why scale to 0 before patching:** `kubectl apply` immediately creates pods that try (and fail) to pull the ACR image. Those pods get scheduled to the node and consume resource requests even while stuck in `ImagePullBackOff`. If you then run `kubectl set image` or `kubectl patch`, each triggers a *separate* new rollout. The default RollingUpdate strategy (`maxUnavailable: 0`) refuses to terminate old pods until replacements are Ready — but the new pods can't schedule because the stuck ones still hold the node's resources. This creates a **deadlock** and the rollout times out. Scaling to 0 first clears all stuck pods from the node, the patch applies cleanly to the Deployment spec, and scaling back up creates pods with the correct image from the start — a single clean rollout.
 
 ```bash
 # Load local image into kind (avoids needing a registry)
@@ -224,13 +448,53 @@ kind load docker-image bank-marketing-api:local --name bm-local
 kubectl create namespace bank-marketing
 kubectl create namespace bank-marketing-dev
 
-# Deploy to production namespace
-# (k8s/deployment.yaml image field must reference bank-marketing-api:local for kind)
+# --- Production namespace ---
+# Apply manifests, then immediately scale to 0 to prevent stuck ACR-image pods
 kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -n bank-marketing
+kubectl scale deployment/bank-marketing-api --replicas=0 -n bank-marketing
 
-# Deploy to staging namespace (ResourceQuota + ClusterIP service + 1-replica deployment)
+# Override the ACR image and remove imagePullSecrets in a single strategic-merge patch
+# (acr-secret doesn't exist in kind — it's created by CI/CD on AKS)
+# Strategic merge is idempotent: "imagePullSecrets: null" is a safe no-op if the field
+# is already absent, and the container image merges by the "name" key.
+kubectl patch deployment bank-marketing-api -n bank-marketing --type=strategic -p '
+spec:
+  template:
+    spec:
+      imagePullSecrets: null
+      containers:
+        - name: api
+          image: bank-marketing-api:local
+          imagePullPolicy: Never
+'
+
+# Scale back up — pods start with the correct local image from the outset
+kubectl scale deployment/bank-marketing-api --replicas=2 -n bank-marketing
+
+# --- Staging namespace ---
+# Apply manifests, then immediately scale to 0
 kubectl apply -f k8s/quota-dev.yaml -n bank-marketing-dev
 kubectl apply -f k8s/deployment-dev.yaml -f k8s/service-dev.yaml -n bank-marketing-dev
+kubectl scale deployment/bank-marketing-api --replicas=0 -n bank-marketing-dev
+
+# Override the ACR image (dev deployment has no imagePullSecrets to remove,
+# but including "imagePullSecrets: null" is harmless with strategic merge)
+kubectl patch deployment bank-marketing-api -n bank-marketing-dev --type=strategic -p '
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          image: bank-marketing-api:local
+          imagePullPolicy: Never
+'
+
+# Scale back up
+kubectl scale deployment/bank-marketing-api --replicas=1 -n bank-marketing-dev
+
+# Wait for both rollouts to complete
+kubectl rollout status deployment/bank-marketing-api -n bank-marketing --timeout=120s
+kubectl rollout status deployment/bank-marketing-api -n bank-marketing-dev --timeout=120s
 
 # Verify pods are running in both namespaces
 kubectl get pods -n bank-marketing
@@ -239,6 +503,27 @@ kubectl get pods -n bank-marketing-dev
 # Check services (production: LoadBalancer pending; staging: ClusterIP with cluster IP assigned)
 kubectl get svc -n bank-marketing
 kubectl get svc -n bank-marketing-dev
+```
+
+> **Troubleshooting Pending pods:** If pods stay in `Pending` for more than 30 seconds, run `kubectl describe pod <pod-name> -n <namespace>` and check the `Events` section at the bottom. Common causes in kind:
+> - `ErrImageNeverPull` / `ImagePullBackOff` — the image override was not applied, or `kind load docker-image` was not run
+> - `Insufficient cpu` / `Insufficient memory` — the node lacks resources (unlikely on the default single-node kind cluster unless other workloads are competing)
+> - **Rollout deadlock** — if you ran `kubectl set image` or `kubectl patch` without scaling to 0 first, old stuck pods block new ones. Fix with: `kubectl scale deployment/bank-marketing-api --replicas=0 -n <namespace>`, wait a few seconds, then `kubectl scale deployment/bank-marketing-api --replicas=<N> -n <namespace>`
+> - `untolerated taint {node-role.kubernetes.io/control-plane}` — the taint removal step was skipped; run `kubectl taint nodes --all node-role.kubernetes.io/control-plane-`
+
+### Redeploying After Image Rebuild
+
+After rebuilding the Docker image (e.g. code change), re-deploy with the **scale-to-0 pattern** — do **not** use `kubectl rollout restart`, which triggers a RollingUpdate that deadlocks for the same reason as above (old pods hold resources while new pods wait to schedule).
+
+```bash
+kind load docker-image bank-marketing-api:local --name bm-local
+kubectl scale deployment/bank-marketing-api --replicas=0 -n bank-marketing
+kubectl scale deployment/bank-marketing-api --replicas=0 -n bank-marketing-dev
+sleep 3
+kubectl scale deployment/bank-marketing-api --replicas=2 -n bank-marketing
+kubectl scale deployment/bank-marketing-api --replicas=1 -n bank-marketing-dev
+kubectl rollout status deployment/bank-marketing-api -n bank-marketing --timeout=120s
+kubectl rollout status deployment/bank-marketing-api -n bank-marketing-dev --timeout=120s
 ```
 
 > **Note on service types in kind:**
@@ -335,204 +620,9 @@ kubectl config use-context kind-bm-local
 
 ---
 
-## 6. Run kubeconform Locally
-
-[kubeconform](https://github.com/yannh/kubeconform) validates Kubernetes manifests against the official JSON schemas — the same check that runs in CI.
-
-### Install
-
-```bash
-curl -sLO https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
-tar xzf kubeconform-linux-amd64.tar.gz
-sudo mv kubeconform /usr/local/bin/
-rm kubeconform-linux-amd64.tar.gz
-```
-
-### Validate Manifests
-
-```bash
-# Validate all YAML files in the k8s/ directory
-kubeconform -summary -strict k8s/
-
-# Validate a specific file
-kubeconform -strict k8s/deployment.yaml
-
-# Validate with verbose output (shows each resource checked)
-kubeconform -summary -strict -verbose k8s/
-```
-
-Expected output for valid manifests:
-```
-Summary: 2 resources found parsing k8s/ - Valid: 2, Invalid: 0, Errors: 0, Skipped: 0
-```
-
-### What kubeconform Catches
-
-| Check | Example |
-|---|---|
-| YAML syntax errors | Missing colons, bad indentation |
-| Invalid field names | `replics` instead of `replicas` |
-| Wrong field types | `replicas: "2"` (string instead of int) |
-| Missing required fields | Deployment without `selector` |
-
-> **Note:** kubeconform performs client-side schema validation only. It does not check cluster-specific constraints like admission policies or resource quotas — those require `kubectl --dry-run=server` against a live cluster (see [Section 5](#5-local-kubernetes-setup)).
-
----
-
-## 7. Set Up Docker Locally
-
-The Dev Container is configured with **Docker-outside-of-Docker**, meaning the Docker CLI inside the container communicates with the Docker daemon on your host machine. No additional setup is required if Docker Desktop is running on the host.
-
-### Verify Docker Access
-
-```bash
-# Confirm the Docker CLI can reach the daemon
-docker info
-
-# Check running containers
-docker ps
-```
-
-### Troubleshooting
-
-| Issue | Cause | Fix |
-|---|---|---|
-| `Cannot connect to the Docker daemon` | Docker Desktop not running on host | Start Docker Desktop on the host machine |
-| `permission denied` | Socket permissions | Restart the Dev Container — the feature configures socket access on startup |
-| `docker: command not found` | Feature not installed | Rebuild the Dev Container (`Dev Containers: Rebuild Container`) |
-
----
-
-## 8. Docker Build
-
-Build the container image locally. Since the project does not yet have a Dockerfile, create one at the repository root first.
-
-### Example Dockerfile
-
-> **Note:** This Dockerfile is based on the deployment architecture documented in [docs/deployment.md](deployment.md). Create it at the repository root as `Dockerfile`.
-
-```dockerfile
-FROM python:3.12-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY src/ src/
-COPY config.yaml .
-COPY artifacts/model.pkl artifacts/model.pkl
-
-EXPOSE 8000
-
-CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-### Build the Image
-
-```bash
-# Build with a local tag
-docker build -t bank-marketing-api:local .
-
-# Verify the image was created
-docker images | grep bank-marketing-api
-```
-
-### Build Tips
-
-| Flag | Purpose | Example |
-|---|---|---|
-| `-t` | Tag the image | `-t bank-marketing-api:local` |
-| `--no-cache` | Force a clean rebuild | `docker build --no-cache -t bank-marketing-api:local .` |
-| `--progress=plain` | Show full build output | Useful for debugging failed builds |
-
----
-
-## 9. Local Container Smoke Test
-
-Run the built image and verify the API starts correctly and responds to requests.
-
-### Start the Container
-
-```bash
-docker run -d --name smoke-test -p 8000:8000 bank-marketing-api:local
-```
-
-### Run Smoke Tests
-
-```bash
-# Wait for the container to start (model loading)
-sleep 5
-
-# Health check
-curl -s http://localhost:8000/health
-# Expected: {"status":"healthy"}
-
-# Prediction request
-curl -s -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "age": 35,
-    "job": "management",
-    "marital": "married",
-    "education": "tertiary",
-    "default": "no",
-    "balance": 1500.0,
-    "housing": "yes",
-    "loan": "no",
-    "contact": "cellular",
-    "day": 15,
-    "month": "may",
-    "duration": 250.0,
-    "campaign": 1,
-    "pdays": -1,
-    "previous": 0,
-    "poutcome": "unknown"
-  }'
-# Expected: {"prediction":...,"probability":...,"label":"..."}
-
-# Check container logs for errors
-docker logs smoke-test
-```
-
-### Clean Up
-
-```bash
-docker stop smoke-test
-docker rm smoke-test
-```
-
-### Scripted Smoke Test
-
-Combine health check and prediction into a single pass/fail script:
-
-```bash
-#!/bin/bash
-set -e
-
-echo "Starting container..."
-docker run -d --name smoke-test -p 8000:8000 bank-marketing-api:local
-sleep 5
-
-echo "Health check..."
-HEALTH=$(curl -sf http://localhost:8000/health)
-echo "$HEALTH" | grep -q '"healthy"' || { echo "FAIL: health check"; exit 1; }
-
-echo "Prediction test..."
-PRED=$(curl -sf -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{"age":35,"job":"management","marital":"married","education":"tertiary","default":"no","balance":1500.0,"housing":"yes","loan":"no","contact":"cellular","day":15,"month":"may","duration":250.0,"campaign":1,"pdays":-1,"previous":0,"poutcome":"unknown"}')
-echo "$PRED" | grep -q '"prediction"' || { echo "FAIL: predict endpoint"; exit 1; }
-
-echo "PASS: All smoke tests passed"
-echo "Response: $PRED"
-
-docker stop smoke-test && docker rm smoke-test
-```
-
----
-
 ## 10. Local Inference Call Tests
+
+> **Notebook:** [notebooks/03_ml_pipeline.ipynb](../notebooks/03_ml_pipeline.ipynb) — Section 6 tests direct model inference without starting the API server. For full API inference over HTTP, use `04_docker_testing.ipynb`.
 
 Test the prediction API locally without Docker, using `uvicorn` directly.
 
@@ -667,13 +757,13 @@ print(response.json())       # {"prediction": ..., "probability": ..., "label": 
 | Train model | `python main.py train` |
 | Batch predict | `python main.py predict --input <csv> --output <csv>` |
 | Run all tests | `python -m pytest tests/ -v --tb=short` |
+| Validate K8s manifests | `kubeconform -summary -strict k8s/` |
 | Start API server | `uvicorn src.api.app:app --host 0.0.0.0 --port 8000` |
 | Build Docker image | `docker build -t bank-marketing-api:local .` |
-| Run container | `docker run -d --name smoke-test -p 8000:8000 bank-marketing-api:local` |
+| Run container | `docker run -d --name smoke-test --network container:$(hostname) bank-marketing-api:local` |
 | Health check | `curl -s http://localhost:8000/health` |
 | Predict request | `curl -s -X POST http://localhost:8000/predict -H "Content-Type: application/json" -d '{...}'` |
-| Validate K8s manifests | `kubeconform -summary -strict k8s/` |
-| Start kind cluster | `kind create cluster --config kind-config.yaml --retain` (see DooD note in Section 5) |
+| Start kind cluster | `kind create cluster --config kind-config.yaml --retain` (see DooD note in Section 9) |
 | Load image into kind | `kind load docker-image bank-marketing-api:local --name bm-local` |
 | Create namespaces | `kubectl create namespace bank-marketing && kubectl create namespace bank-marketing-dev` |
 | Deploy to production namespace | `kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -n bank-marketing` |
@@ -705,14 +795,14 @@ print(response.json())       # {"prediction": ..., "probability": ..., "label": 
 
 ### Docker
 
-- Docker. [Dockerfile reference](https://docs.docker.com/reference/dockerfile/). Canonical reference for `FROM`, `COPY`, `RUN`, `EXPOSE`, and `CMD` instructions used in the example Dockerfile in Section 8.
-- Docker. [docker build](https://docs.docker.com/reference/cli/docker/image/build/). CLI reference for `docker build -t`, `--no-cache`, and `--progress` flags documented in Section 8.
-- Docker. [docker run](https://docs.docker.com/reference/cli/docker/container/run/). CLI reference for `-d`, `--name`, `-p` port mapping, and container lifecycle commands used in Sections 9 and 10.
+- Docker. [Dockerfile reference](https://docs.docker.com/reference/dockerfile/). Canonical reference for `FROM`, `COPY`, `RUN`, `EXPOSE`, and `CMD` instructions used in the example Dockerfile in Section 7.
+- Docker. [docker build](https://docs.docker.com/reference/cli/docker/image/build/). CLI reference for `docker build -t`, `--no-cache`, and `--progress` flags documented in Section 7.
+- Docker. [docker run](https://docs.docker.com/reference/cli/docker/container/run/). CLI reference for `-d`, `--name`, `--network`, and container lifecycle commands used in Sections 8 and 10.
 
 ### Kubernetes
 
-- Kubernetes. [Install kubectl — Linux](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/). Official install instructions for `kubectl` on Linux, referenced in Section 5.
-- kind. [Quick Start](https://kind.sigs.k8s.io/docs/user/quick-start/). Official installation and cluster creation guide — covers `kind create cluster`, kubeconfig setup, and cluster lifecycle commands used in Section 5.
+- Kubernetes. [Install kubectl — Linux](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/). Official install instructions for `kubectl` on Linux, referenced in Section 9.
+- kind. [Quick Start](https://kind.sigs.k8s.io/docs/user/quick-start/). Official installation and cluster creation guide — covers `kind create cluster`, kubeconfig setup, and cluster lifecycle commands used in Section 9.
 - kind. [Loading an image into a cluster](https://kind.sigs.k8s.io/docs/user/quick-start/#loading-an-image-into-your-cluster). Documents the `kind load docker-image` command used to load locally-built images into the kind cluster without a registry.
 - kind. [Known issues — WSL2](https://kind.sigs.k8s.io/docs/user/known-issues/#pod-errors-due-to-too-many-open-files). Background on kind behaviour in containerised and WSL2 environments — relevant to the `cgroupDriver: cgroupfs` config in `kind-config.yaml`.
-- yannh. [kubeconform — GitHub](https://github.com/yannh/kubeconform). Kubernetes manifest validator used in Section 6 — covers installation, `-strict` mode, and schema validation behaviour.
+- yannh. [kubeconform — GitHub](https://github.com/yannh/kubeconform). Kubernetes manifest validator used in Section 5 — covers installation, `-strict` mode, and schema validation behaviour.

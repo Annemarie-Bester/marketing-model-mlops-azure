@@ -49,4 +49,6 @@ kubectl
 minikube-linux-amd64
 kind
 kubeconform
+LICENSE
+notebooks/LICENSE
 preloaded-images-k8s-*

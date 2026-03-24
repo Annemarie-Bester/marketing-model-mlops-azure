@@ -1,5 +1,9 @@
 FROM python:3.12-slim
 
+# Install curl for in-cluster health checks (kubectl exec smoke tests)
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Run as non-root user for security
 RUN useradd --create-home --shell /bin/bash appuser
 

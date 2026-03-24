@@ -5,7 +5,7 @@ Bibliography for the Bank Marketing MLOps project, organised by topic.
 **Format:** `[N]. Author(s) or Organisation. *Title*. Publisher / URL. Year.`
 Leave a `> Note:` line beneath an entry to record why it was useful.
 
-> Reference numbers follow section order — ML modelling sections are numbered first ([1]–[7]), followed by MLOps lifecycle ([8]–[10]), CI/CD ([11]–[28]), Azure infrastructure ([29]–[37]), deployment strategies ([38]–[41]), AI tools ([42]–[45]), containerisation & Docker ([46]–[55]), and local Kubernetes development ([56]–[62]). Cross-references in `docs/` use the bracket notation to link back here.
+> Reference numbers follow section order — ML modelling sections are numbered first ([1]–[7], [63]–[64]), followed by MLOps lifecycle ([8]–[10]), CI/CD ([11]–[28]), Azure infrastructure ([29]–[37]), deployment strategies ([38]–[41], [65]–[66]), AI tools ([42]–[45]), containerisation & Docker ([46]–[55]), and local Kubernetes development ([56]–[62], [67]). Cross-references in `docs/` use the bracket notation to link back here.
 
 ---
 
@@ -38,6 +38,9 @@ Leave a `> Note:` line beneath an entry to record why it was useful.
 [3]. scikit-learn. *scikit-learn/scikit-learn — Official examples (GitHub)*. https://github.com/scikit-learn/scikit-learn/tree/main/examples. GitHub, 2024.
 > Official sklearn examples repository — the `compose/` directory covers `ColumnTransformer` and `Pipeline` construction patterns; the `classification/` directory covers classifier comparison and evaluation approaches. Concrete, runnable code complementing the user guide sections.
 
+[63]. Microsoft/Azure. *AzureML Examples — Train on Local*. https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/training/train-on-local/train-on-local.ipynb. GitHub, 2024.
+> AzureML SDK v1 notebook demonstrating local training with experiment tracking — shows how to configure a local compute target, submit a training run, and log metrics to an Azure ML workspace. Referenced during research on AzureML training patterns.
+
 ---
 
 ## Classification Models
@@ -58,6 +61,9 @@ Leave a `> Note:` line beneath an entry to record why it was useful.
 
 [6]. scikit-learn. *User Guide — Model evaluation: quantifying the quality of predictions*. https://scikit-learn.org/stable/modules/model_evaluation.html. 2024.
 > Comprehensive official guide covering `roc_auc_score`, `f1_score`, `classification_report`, and the section on why accuracy is a misleading metric for class-imbalanced problems. The evaluation strategy in `src/evaluate.py` — choosing ROC-AUC and minority-class F1 over accuracy, with a 7.6:1 class imbalance — follows this guidance directly.
+
+[64]. Microsoft/Azure. *AzureML Examples — Track and Monitor Experiments*. https://github.com/Azure/MachineLearningNotebooks/tree/master/how-to-use-azureml/track-and-monitor-experiments. GitHub, 2024.
+> Collection of AzureML SDK v1 notebooks covering the logging API, run management, TensorBoard integration, and MLflow experiment tracking — reference for metric logging and experiment monitoring patterns.
 
 ---
 
@@ -194,6 +200,12 @@ Leave a `> Note:` line beneath an entry to record why it was useful.
 [41]. Kubernetes. *Zero-downtime Deployment in Kubernetes with Jenkins (blog)*. https://kubernetes.io/blog/2018/04/30/zero-downtime-deployment-kubernetes-jenkins/. 2018.
 > Documents the blue/green selector-switching pattern on Kubernetes, including both `Deployment` definitions, the public `Service`, and a separate test `Service` for pre-cutover validation — the reference for the blue-green deployment strategy described in `docs/future-enhancements.md`.
 
+[65]. Osborne-Walsh, O. *ml-on-aca — Deploy containerised ML workloads on Azure Container Apps*. https://github.com/owainow/ml-on-aca. GitHub, 2024.
+> Workshop repository demonstrating FastAPI + TensorFlow model deployment on Azure Container Apps (ACA) — covers ACR image building, ACA environment creation, and ingress configuration. An alternative serverless deployment target to AKS for CPU-based ML inference.
+
+[66]. Osborne-Walsh, O. *Deploy Tensorflow Machine Learning models on Azure Container Apps*. https://techcommunity.microsoft.com/blog/appsonazureblog/deploy-tensorflow-machine-learning-models-on-azure-container-apps/3981763. Microsoft Tech Community, 2024.
+> Accompanying blog post for [65] — explains why Azure Container Apps suits CPU-based ML inference (KEDA autoscaling, consumption tier pricing, revision-based traffic splitting) and walks through the full ACR → ACA deployment lifecycle.
+
 ---
 
 ## Local Kubernetes Development (kind)
@@ -220,6 +232,9 @@ Leave a `> Note:` line beneath an entry to record why it was useful.
 
 [62]. Microsoft/Azure. *Automated Test Environment for AKS Applications*. https://github.com/Azure-Samples/automated-test-environment-for-aks-applications. GitHub, 2024.
 > Azure Samples reference implementation for spinning up ephemeral per-PR Kubernetes namespaces for automated integration testing on AKS — directly extends the namespace isolation pattern in Section 8 of the Cluster Isolation & Deployment Strategies documentation. Shows how to automate the `kubectl create namespace pr-<id>`, deploy, test, and teardown lifecycle in a CI pipeline.
+
+[67]. Kubernetes. *Objects In Kubernetes*. https://kubernetes.io/docs/concepts/overview/working-with-objects/. 2024.
+> Official documentation on the Kubernetes object model — covers object spec and status, manifest structure (`apiVersion`, `kind`, `metadata`, `spec`), required fields, and server-side field validation. Foundational reference for understanding the Deployment, Service, and ResourceQuota manifests in `k8s/`.
 
 ---
 

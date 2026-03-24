@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bank-marketing-api
+  namespace: bank-marketing-dev
+  labels:
+    app: bank-marketing-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bank-marketing-api
+  template:
+    metadata:
+      labels:
+        app: bank-marketing-api
+    spec:
+      containers:
+        - name: api
+          image: bankmarketingacr.azurecr.io/bank-marketing-api:dev-latest
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          env:
+            - name: UVICORN_WORKERS
+              value: "1"
