@@ -5,21 +5,17 @@ data:
 features:
   age_cap: 100
   log_transform_cols:
-  - duration
-  - campaign
+    - duration
+    - campaign
   signed_log_cols:
-  - balance
+    - balance
   drop_cols:
-  - post_campaign_action
+    - post_campaign_action
 model:
   target_column: target
-  type: logistic_regression  # Options: logistic_regression, gradient_boosting, random_forest
+  type: logistic_regression # Options: logistic_regression, gradient_boosting, random_forest
   test_size: 0.2
   random_state: 42
 artifacts:
   model_path: artifacts/model.pkl
   metrics_path: artifacts/metrics.json
-api:
-  host: 0.0.0.0
-  port: 8000
-  workers: 1

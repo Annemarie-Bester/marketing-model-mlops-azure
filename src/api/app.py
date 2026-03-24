@@ -5,8 +5,11 @@ Loads the trained sklearn pipeline at startup and exposes:
     POST /predict  — score a single customer record
     GET  /health   — liveness/readiness probe for AKS
 
-All settings (host, port, workers) are read from config.yaml.
-The model artifact path is also in config.yaml — no hardcoded paths.
+Operational settings (host, port, workers) are read from environment variables:
+    API_HOST        (default: 0.0.0.0)
+    API_PORT        (default: 8000)
+    UVICORN_WORKERS (default: 1)
+The model artifact path is read from config.yaml.
 """
 
 import logging
@@ -22,6 +25,10 @@ from pydantic import BaseModel
 from src.config import load_config
 from src.evaluate import load_model
 from src.features import clean_data
+
+API_HOST = os.environ.get("API_HOST", "0.0.0.0")
+API_PORT = int(os.environ.get("API_PORT", "8000"))
+API_WORKERS = int(os.environ.get("UVICORN_WORKERS", "1"))
 
 logger = logging.getLogger(__name__)
 

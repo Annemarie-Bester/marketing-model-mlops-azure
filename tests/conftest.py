@@ -37,7 +37,6 @@ def config():
             "model_path": "artifacts/model.pkl",
             "metrics_path": "artifacts/metrics.json",
         },
-        "api": {"host": "0.0.0.0", "port": 8000, "workers": 1},
     }
 
 
