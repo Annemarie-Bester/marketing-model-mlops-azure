@@ -142,7 +142,7 @@ The current project uses Kubernetes **rolling updates** (`strategy.type: Rolling
 
 3. **Low deployment frequency**: This is a bank marketing case study with a single model, not a high-frequency production system. The risk profile that justifies blue-green — frequent retraining, multiple concurrent model versions, customer-facing SLA — is not present.
 
-4. **Model is baked into the image**: Because `model.pkl` is packaged inside the Docker image (not loaded from Azure ML Registry or Blob Storage at runtime), every model update is already a full image rebuild and CD cycle. The blue-green benefit of decoupling model version from infra version is not available until model storage is externalised.
+4. **Model is already loaded from Blob Storage at runtime**: Because `model.pkl` is loaded from Azure Blob Storage at pod startup (not baked into the Docker image), model updates only require a pod restart (`kubectl rollout restart`) — not a full image rebuild. Blue-green's benefit of decoupling model version from infra version is already achieved by the current architecture.
 
 5. **MLOps maturity prerequisite**: The Microsoft MLOps maturity model places automated blue-green deployment at level 3–4. The project is currently at level 2 (automated CI/CD, basic monitoring). Strengthening model versioning, multi-environment promotion, and metric-gated rollouts should come before blue-green.
 
@@ -150,7 +150,6 @@ The current project uses Kubernetes **rolling updates** (`strategy.type: Rolling
 
 Before implementing blue-green, the following capabilities should be in place:
 
-- **External model storage**: Move `model.pkl` out of the Docker image into Azure ML Registry or Azure Blob Storage. This decouples model versioning from container versioning and makes blue-green semantics meaningful at the model level.
 - **Metric-gated cutover**: The selector patch should only be allowed if the staged slot passes a performance threshold (e.g., AUC ≥ 0.80 on a held-out sample) — not just a `/health` check.
 - **Automated soak monitoring**: Application Insights alerts should gate the decision to scale down the previous slot, not a hardcoded timer.
 - **Parameterised manifests**: Use Helm or Kustomize to template the `role:` label into both `Deployment` definitions, avoiding manifest duplication.
@@ -397,7 +396,7 @@ Training moves from a `docker run` step on the CI agent to a **Kubernetes Job** 
 | **Execution environment** | Docker on Microsoft-hosted agent | Kubernetes Job on AKS node pool |
 | **Data input** | Volume mount from agent file system | Azure Blob Storage (direct download or Blob FUSE) |
 | **Artifact output** | Volume mount → agent file system → pipeline artifact | Azure Blob Storage (versioned, durable) |
-| **Model handoff to inference** | `COPY` into `Dockerfile.infer` at build time | Inference service loads model from Blob Storage at startup or redeploy |
+| **Model handoff to inference** | Inference pods load model from Blob Storage at runtime via `MODEL_BLOB_PREFIX` | Inference service loads model from Blob Storage at startup or redeploy |
 | **GPU access** | Not available on standard agents | Available via GPU node pool on AKS |
 | **Training duration** | Constrained by pipeline job timeout (default 60 min) | Constrained only by Job `activeDeadlineSeconds` |
 | **Reproducibility** | Depends on agent image version | Fixed container image from ACR (`train-latest`) |
@@ -482,14 +481,7 @@ The pipeline waits for Job completion (`kubectl wait --for=condition=complete`),
 
 **4. Inference deployment update**
 
-With the new model promoted, the pipeline triggers an update to the inference Deployment. Two strategies are viable:
-
-| Strategy | How | When to use |
-|---|---|---|
-| **Image rebuild** (current pattern) | Build a new `Dockerfile.infer` with the model baked in → rolling update | Simple; model is self-contained in the image |
-| **Runtime model loading** (this enhancement) | Inference service downloads model from Blob Storage at startup → `kubectl rollout restart` | Decouples model version from container version; enables faster rollouts |
-
-The runtime model loading approach is the natural fit for AKS-based training. The inference container reads `registry-manifest.json` to determine which model version to load, downloads the corresponding `.pkl` from Blob Storage, and serves predictions. A rolling restart (`kubectl rollout restart deployment/bank-marketing-api`) triggers all pods to reload the latest model.
+With the new model promoted, the pipeline triggers an update to the inference Deployment. The current project already uses **runtime model loading** — inference pods download `model.pkl` from Azure Blob Storage at startup via `MODEL_BLOB_PREFIX`. A rolling restart (`kubectl rollout restart deployment/bank-marketing-api`) triggers all pods to reload the latest model. No image rebuild is needed for model-only updates.
 
 **5. Verification**
 

@@ -548,7 +548,7 @@ Once you have built a Docker image (see [Section 8](#8-docker-build)), load it i
 
 ```bash
 # Load local image into kind (avoids needing a registry)
-# A single local image is used for both namespaces — on AKS, dev-<sha> and <sha> are separate ACR tags
+# A single local image is used for both namespaces — on AKS, dev-<buildId> and <buildId> are separate ACR tags
 kind load docker-image bank-marketing-api:local --name bm-local
 
 # Create both namespaces
@@ -718,10 +718,10 @@ kubectl config current-context
 kubectl create namespace bank-marketing --dry-run=client -o yaml | kubectl apply -f -
 kubectl create namespace bank-marketing-dev --dry-run=client -o yaml | kubectl apply -f -
 
-# Apply production manifests (image must reference ACR tag: bankmarketingacr.azurecr.io/bank-marketing-api:<sha>)
+# Apply production manifests (image must reference ACR tag: bankmarketingacr.azurecr.io/bank-marketing-api:<buildId>)
 kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -n bank-marketing
 
-# Apply staging manifests (image: bankmarketingacr.azurecr.io/bank-marketing-api:dev-<sha>)
+# Apply staging manifests (image: bankmarketingacr.azurecr.io/bank-marketing-api:dev-<buildId>)
 kubectl apply -f k8s/quota-dev.yaml -n bank-marketing-dev
 kubectl apply -f k8s/deployment-dev.yaml -f k8s/service-dev.yaml -n bank-marketing-dev
 

@@ -25,7 +25,7 @@ flowchart TD
         subgraph NS_DEV["Namespace: bank-marketing-dev (staging)"]
             DEP_DEV["Deployment: bank-marketing-api<br/>1 replica · FastAPI + model.pkl"]
             SVC_DEV["Service: bank-marketing-api<br/>Type: ClusterIP · Port 8000 (internal)"]
-            RQ["ResourceQuota<br/>max 1 CPU · 512Mi memory"]
+            RQ["ResourceQuota<br/>250m–500m CPU · 256–512Mi mem · 2 pods max"]
         end
     end
 
@@ -33,8 +33,8 @@ flowchart TD
     LB["Azure Load Balancer<br/>External IP"]
     CLIENT["Client / Upstream Service"]
 
-    ACR -->|"main: sha + latest"| DEP_PROD
-    ACR -->|"dev: dev-sha"| DEP_DEV
+    ACR -->|"main: buildId + latest"| DEP_PROD
+    ACR -->|"dev: dev-buildId"| DEP_DEV
     DEP_PROD --> SVC_PROD
     SVC_PROD --> LB
     CLIENT -->|"POST /predict"| LB
@@ -93,6 +93,25 @@ spec:
           env:
             - name: UVICORN_WORKERS
               value: "1"
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bank-marketing-api-key
+                  key: API_KEY
+            - name: STORAGE_BACKEND
+              value: "azure_blob"
+            - name: AZURE_STORAGE_ACCOUNT_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: azure-storage
+                  key: ACCOUNT_NAME
+            - name: AZURE_STORAGE_CONTAINER
+              valueFrom:
+                secretKeyRef:
+                  name: azure-storage
+                  key: CONTAINER_NAME
+            - name: MODEL_BLOB_PREFIX
+              value: "production"
       imagePullSecrets:
         - name: acr-secret
 ```
@@ -185,6 +204,27 @@ spec:
           env:
             - name: UVICORN_WORKERS
               value: "1"
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bank-marketing-api-key
+                  key: API_KEY
+            - name: STORAGE_BACKEND
+              value: "azure_blob"
+            - name: AZURE_STORAGE_ACCOUNT_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: azure-storage
+                  key: ACCOUNT_NAME
+            - name: AZURE_STORAGE_CONTAINER
+              valueFrom:
+                secretKeyRef:
+                  name: azure-storage
+                  key: CONTAINER_NAME
+            - name: MODEL_BLOB_PREFIX
+              value: "staging"
+      imagePullSecrets:
+        - name: acr-secret
 ```
 
 ### Staging Service

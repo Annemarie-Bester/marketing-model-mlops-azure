@@ -54,11 +54,11 @@ This project deploys to **two Kubernetes namespaces within the same AKS cluster*
 ```mermaid
 flowchart LR
     subgraph dev["dev branch"]
-        D_GATE["Staging Gate\n• CI: tests + kubeconform\n• Docker build + push (dev-sha)\n• Deploy to bank-marketing-dev\n• In-cluster smoke test"]
+        D_GATE["Staging Gate\n• CI: tests + kubeconform\n• Docker build + push (dev-buildId)\n• Deploy to bank-marketing-dev\n• In-cluster smoke test"]
     end
 
     subgraph main["main branch"]
-        M_GATE["Production Gate\n• CI: tests + kubeconform\n• Docker build + push (sha + latest)\n• Deploy to bank-marketing\n• Live smoke test"]
+        M_GATE["Production Gate\n• CI: tests + kubeconform\n• Docker build + push (buildId + latest)\n• Deploy to bank-marketing\n• Live smoke test"]
     end
 
     feature["feature/*"] -->|"PR + squash merge"| dev
@@ -67,8 +67,8 @@ flowchart LR
 
 | Branch | Role in namespace-isolated setup |
 |---|---|
-| `dev` | **Staging gate.** All feature work integrates here. On merge, a `dev-<sha>` image is pushed to ACR and deployed to `bank-marketing-dev`. In-cluster smoke tests run against the `ClusterIP` service. Catches scheduling failures, image pull errors, and model loading crashes before `main`. |
-| `main` | **Production gate.** Only release-ready code reaches here. Merging to `main` triggers the full pipeline: test → build → push to ACR (`<sha>` + `latest`) → deploy to `bank-marketing` → live smoke test. |
+| `dev` | **Staging gate.** All feature work integrates here. On merge, a `dev-<buildId>` image is pushed to ACR and deployed to `bank-marketing-dev`. In-cluster smoke tests run against the `ClusterIP` service. Catches scheduling failures, image pull errors, and model loading crashes before `main`. |
+| `main` | **Production gate.** Only release-ready code reaches here. Merging to `main` triggers the full pipeline: test → build → push to ACR (`<buildId>` + `latest`) → deploy to `bank-marketing` → live smoke test. |
 | `feature/*` | Short-lived branches. PR into `dev` triggers CI validation and a local container smoke test. |
 
 ### Why namespace isolation instead of a second cluster?
@@ -100,13 +100,13 @@ flowchart TD
     end
 
     subgraph CD_DEV["CD — Staging Deploy (push to dev)"]
-        DEV_BUILD["Docker build + push dev-sha"]
+        DEV_BUILD["Docker build + push dev-buildId"]
         DEV_DEPLOY["kubectl apply bank-marketing-dev"]
         DEV_SMOKE["In-cluster smoke test"]
     end
 
     subgraph CD_PROD["CD — Production Deploy (merge to main)"]
-        PROD_BUILD["Docker build + push sha+latest"]
+        PROD_BUILD["Docker build + push buildId+latest"]
         PROD_DEPLOY["kubectl apply bank-marketing"]
         PROD_SMOKE["Live smoke test"]
     end
@@ -124,8 +124,8 @@ flowchart TD
 |---|---|---|
 | PR opened/updated → `dev` | Validation | Run tests + K8s manifest validation + local container smoke test. No push, no deploy. |
 | PR opened/updated → `main` | Validation + Container Build | Run tests, K8s manifest validation, Docker build (no push) + container smoke test. No push, no deploy. |
-| Push to `dev` | Validation + Staging Deploy | Run tests + kubeconform → build image → push `dev-<sha>` to ACR → deploy to `bank-marketing-dev` → in-cluster smoke test. |
-| Merge to `main` (release) | Validation + Build + Deploy | Run tests → kubeconform → build image → push `<sha>` + `latest` to ACR → deploy to `bank-marketing` → live smoke test. |
+| Push to `dev` | Validation + Staging Deploy | Run tests + kubeconform → build image → push `dev-<buildId>` to ACR → deploy to `bank-marketing-dev` → in-cluster smoke test. |
+| Merge to `main` (release) | Validation + Build + Deploy | Run tests → kubeconform → build image → push `<buildId>` + `latest` to ACR → deploy to `bank-marketing` → live smoke test. |
 
 ---
 

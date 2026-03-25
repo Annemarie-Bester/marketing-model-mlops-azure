@@ -206,14 +206,14 @@ terraform {
 | **Image size** | Carries inference deps (FastAPI, uvicorn, pydantic) during training and training-only data I/O during serving | Each image installs only what it needs (`requirements.txt` vs `requirements-infer.txt`) |
 | **Attack surface** | Serving container ships with the full training toolchain; wider vulnerability footprint in production | Inference image has no training code, no volume mounts for raw data, and no write paths — smaller attack surface |
 | **Scaling independence** | Training and serving share resource profiles; Kubernetes resource requests/limits must accommodate the heavier workload | Inference pods are right-sized (`256Mi–512Mi`, `250m–500m` CPU) without paying for training headroom |
-| **Artifact handoff** | Model is produced and consumed inside the same image — implicit coupling | Training writes `model.pkl` to a mounted volume; CI copies the artifact into the inference image at build time (`COPY artifacts/model.pkl`) — explicit, auditable handoff |
+| **Artifact handoff** | Model is produced and consumed inside the same image — implicit coupling | Training uploads `model.pkl` to Azure Blob Storage; inference pods load it at runtime via `MODEL_BLOB_PREFIX` — explicit, auditable handoff |
 | **CI/CD clarity** | Single build step, but cache invalidation is coarse (any dep change rebuilds everything) | Two independent build stages; inference image is rebuilt only when the model or serving code changes |
 
-**Tradeoff accepted:** Two Dockerfiles means two build pipelines and two image tags to manage in CI. The model artifact must be explicitly transferred between stages (training produces it, CI injects it into the inference build context). This adds a coordination step but makes the handoff visible and version-trackable rather than implicit.
+**Tradeoff accepted:** Two Dockerfiles means two build pipelines and two image tags to manage in CI. The model artifact is explicitly transferred between stages via Azure Blob Storage (training uploads it, inference pods download it at runtime via `MODEL_BLOB_PREFIX`). This adds a coordination step but makes the handoff visible and version-trackable rather than implicit.
 
 **File mapping:**
 - `Dockerfile.train` → `requirements.txt`, entrypoint `python main.py train`, volumes for `/app/data` and `/app/artifacts`
-- `Dockerfile.infer` → `requirements-infer.txt`, entrypoint `uvicorn src.api.app:app`, bakes in `artifacts/model.pkl`, exposes port 8000
+- `Dockerfile.infer` → `requirements-infer.txt`, entrypoint `uvicorn src.api.app:app`, loads `model.pkl` from Azure Blob Storage at runtime (or volume mount locally), exposes port 8000
 
 ---
 

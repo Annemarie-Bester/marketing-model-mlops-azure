@@ -280,14 +280,14 @@ flowchart TD
     subgraph P2_DEV["Pipeline 2 (dev path)"]
         CI_D["CI: Install → pip-audit → pytest<br/>→ kubeconform → DetectChanges"]
         TRAIN_D["TrainModel (conditional): Build + run<br/>training container → Trivy scan<br/>→ upload to Blob → push train image to ACR"]
-        CD_D["CD_Dev: Promote model to staging/ in Blob<br/>→ build infer image → Trivy scan<br/>→ push (dev-sha) → deploy bank-marketing-dev<br/>→ in-cluster smoke test → rolling restart"]
+        CD_D["CD_Dev: Promote model to staging/ in Blob<br/>→ build infer image → Trivy scan<br/>→ push (dev-buildId) → deploy bank-marketing-dev<br/>→ in-cluster smoke test → rolling restart"]
         CI_D --> TRAIN_D --> CD_D
     end
 
     subgraph P2_MAIN["Pipeline 2 (main path)"]
         CI_M["CI: Install → pip-audit → pytest<br/>→ kubeconform → DetectChanges"]
         TRAIN_M["TrainModel (conditional): Build + run<br/>training container → Trivy scan<br/>→ upload to Blob → push train image to ACR"]
-        CD_M["CD_Main: Promote model to production/ in Blob<br/>→ build infer image → Trivy scan<br/>→ push (sha + latest) → deploy bank-marketing<br/>→ live smoke test → rolling restart"]
+        CD_M["CD_Main: Promote model to production/ in Blob<br/>→ build infer image → Trivy scan<br/>→ push (buildId + latest) → deploy bank-marketing<br/>→ live smoke test → rolling restart"]
         CI_M --> TRAIN_M --> CD_M
     end
 
@@ -501,8 +501,8 @@ flowchart TD
     CLIENT["Client / Upstream Service"]
     CICD["CD_Dev (Pipeline 2)"]
 
-    ACR -->|"sha + latest (AcrPull)"| DEP_PROD
-    ACR -->|"dev-sha (AcrPull)"| DEP_DEV
+    ACR -->|"buildId + latest (AcrPull)"| DEP_PROD
+    ACR -->|"dev-buildId (AcrPull)"| DEP_DEV
     BLOB -->|"production/artifacts/model.pkl"| DEP_PROD
     BLOB -->|"staging/artifacts/model.pkl"| DEP_DEV
     DEP_PROD --> SVC_PROD

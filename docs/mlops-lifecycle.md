@@ -94,7 +94,7 @@ flowchart LR
 
 ### Why not MLflow / Model Registry?
 
-For this case study, Git-based versioning is sufficient and avoids introducing infrastructure complexity. In a production system at scale, a model registry (MLflow, Azure ML Model Registry) would provide:
+For this case study, Blob Storage prefix-based versioning is sufficient and avoids introducing infrastructure complexity. In a production system at scale, a model registry (MLflow, Azure ML Model Registry) would provide:
 
 - Centralised model catalogue with metadata
 - Stage transitions (staging → production)
@@ -169,16 +169,18 @@ This enables:
 flowchart TD
     MONITOR["Monitor predictions<br/>+ business feedback"]
     DETECT["Detect trigger:<br/>• metric degradation<br/>• data drift<br/>• scheduled interval"]
-    UPDATE["Update training data<br/>data/raw/*.csv"]
-    RETRAIN["python main.py train"]
-    COMPARE["Compare metrics<br/>new vs. current"]
+    UPDATE["Update training data<br/>in Azure Blob Storage"]
+    RETRAIN["retrain.yml pipeline<br/>pulls train-latest from ACR"]
+    COMPARE["ValidateModel stage<br/>ROC-AUC quality gate"]
     DECISION{Better?}
-    COMMIT["Commit new model.pkl<br/>+ metrics.json"]
-    DEPLOY["Merge → main → CI/CD"]
+    STAGING["Deploy to staging<br/>(bank-marketing-dev)"]
+    SMOKE["In-cluster smoke test"]
+    APPROVE["Manual approval gate"]
+    DEPLOY["Deploy to production<br/>(bank-marketing)"]
     KEEP["Keep current model"]
 
     MONITOR --> DETECT --> UPDATE --> RETRAIN --> COMPARE --> DECISION
-    DECISION -->|"Yes"| COMMIT --> DEPLOY
+    DECISION -->|"Yes"| STAGING --> SMOKE --> APPROVE --> DEPLOY
     DECISION -->|"No"| KEEP
 ```
 
@@ -193,11 +195,11 @@ flowchart TD
 
 ### Retraining Process
 
-1. Obtain updated training data → place in `data/raw/`
-2. Run `python main.py train` — produces new `model.pkl` + `metrics.json`
-3. Compare new metrics against current production model
-4. If improved: commit artifacts, open PR, merge to `main`
-5. CI/CD automatically builds and deploys the new model
+1. Obtain updated training data → upload to Azure Blob Storage (`training-data` container)
+2. The retrain pipeline (`retrain.yml`) pulls `train-latest` from ACR and runs training against the new data
+3. `ValidateModel` stage compares new ROC-AUC against the production baseline — fails if regression > 2 percentage points
+4. If improved: model is promoted through Blob Storage (`builds/<buildId>/` → `staging/artifacts/` → `production/artifacts/`) with staged deployment and manual approval gate
+5. Pods are restarted to load the new model from Blob Storage at runtime
 
 ---
 

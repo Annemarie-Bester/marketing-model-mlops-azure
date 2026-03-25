@@ -203,7 +203,7 @@ POST /predict  (requires X-API-Key header when API_KEY is set)
 }
 → {"prediction": 0, "probability": 0.18, "label": "no"}
 
-GET /health  → {"status": "ok", "model": "logistic_regression"}
+GET /health  → {"status": "healthy"}
 ```
 
 ---
