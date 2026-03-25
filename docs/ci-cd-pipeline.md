@@ -12,15 +12,19 @@ This project uses **three separate Azure DevOps pipelines**: PR validation (iden
 flowchart TD
     subgraph PR["Pipeline 1: pr-validation.yml"]
         direction TB
+        PR_GITLEAKS["Secret scanning\n(gitleaks)"]
         PR_INSTALL["Install deps"]
+        PR_AUDIT["pip-audit"]
         PR_TEST["Run pytest"]
         PR_K8S["kubeconform"]
         PR_TRAIN_BUILD["Build train image"]
+        PR_TRIVY_TRAIN["Trivy scan\n(train image)"]
         PR_TRAIN_RUN["Run training"]
         PR_INFER_BUILD["Build infer image"]
+        PR_TRIVY_INFER["Trivy scan\n(infer image)"]
         PR_SMOKE["Container smoke\n(/health)"]
 
-        PR_INSTALL --> PR_TEST --> PR_K8S --> PR_TRAIN_BUILD --> PR_TRAIN_RUN --> PR_INFER_BUILD --> PR_SMOKE
+        PR_GITLEAKS --> PR_INSTALL --> PR_AUDIT --> PR_TEST --> PR_K8S --> PR_TRAIN_BUILD --> PR_TRIVY_TRAIN --> PR_TRAIN_RUN --> PR_INFER_BUILD --> PR_TRIVY_INFER --> PR_SMOKE
     end
 
     PR_EVENT["PR opened / updated"] --> PR
@@ -178,21 +182,28 @@ Both branches point at the same pipeline definition. The steps are identical.
 
 The PR validation pipeline builds **both containers** locally (no ACR push) to validate the full training → inference flow:
 
-1. Install Python dependencies (`requirements-local.txt` — includes pytest)
-2. Run `pytest`
-3. Validate K8s manifests with `kubeconform`
-4. Build the training image (`Dockerfile.train`)
-5. Run the training container — produces `model.pkl` on the agent
-6. Build the inference image (`Dockerfile.infer`) — model is NOT baked in; loaded from Blob Storage (production) or volume mount (local)
-7. Ephemeral container smoke test — `GET /health` against the inference container (model mounted from agent filesystem)
+1. Secret scanning (`gitleaks`) — detect leaked credentials before merge
+2. Install Python dependencies (`requirements-local.txt` — includes pytest)
+3. Dependency vulnerability scan (`pip-audit`) — check for known CVEs in Python packages
+4. Run `pytest`
+5. Validate K8s manifests with `kubeconform`
+6. Build the training image (`Dockerfile.train`)
+7. Container vulnerability scan (`trivy`) — scan the training image for OS and dependency CVEs
+8. Run the training container — produces `model.pkl` on the agent
+9. Build the inference image (`Dockerfile.infer`) — model is NOT baked in; loaded from Blob Storage (production) or volume mount (local)
+10. Container vulnerability scan (`trivy`) — scan the inference image
+11. Ephemeral container smoke test — `GET /health` against the inference container (model mounted from agent filesystem)
 
 ### What This Validates
 
 | Check | What it catches | Why it matters at PR stage |
 |---|---|---|
+| Secret scanning (`gitleaks`) | Leaked credentials, API keys, tokens committed to the repo | Prevents secrets from entering the integration branch |
+| Dependency vulnerability scan (`pip-audit`) | Known CVEs in Python dependencies | Catches vulnerable packages before merge |
 | `pytest` | Logic errors, API contract changes, config mistakes | Fastest feedback loop — developer fixes before review |
 | `kubeconform` | K8s manifest schema errors, invalid resource specs | Catches YAML issues before they enter the integration branch |
 | Train image build + run | Dockerfile.train errors, training pipeline failures | Training failures caught before merge |
+| Container vulnerability scan (`trivy`) | OS and dependency CVEs in Docker images | Catches image vulnerabilities before merge, not after deployment |
 | Infer image build | Dockerfile.infer errors, missing model artifact | Build failures caught before merge, not after |
 | Container smoke test | Model loading failures, startup crashes, port issues | Runtime errors caught locally, not after AKS deployment |
 
@@ -218,8 +229,9 @@ The CI stage runs on every push to both branches. It contains two parallel jobs:
 
 **Test & Validate job:**
 1. Install Python dependencies (`requirements-local.txt`)
-2. Run `pytest`
-3. Validate K8s manifests with `kubeconform`
+2. Dependency vulnerability scan (`pip-audit`)
+3. Run `pytest`
+4. Validate K8s manifests with `kubeconform`
 
 **DetectChanges job:**
 1. Shallow checkout (`fetchDepth: 2`)

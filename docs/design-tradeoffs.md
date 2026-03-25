@@ -21,83 +21,35 @@ A living record of architectural and engineering decisions made during this proj
 
 ## ML Model & Pipeline
 
-### Versioned Azure Blob Storage with manifest over MLflow on ACI for model registry
+### Prefix-based Azure Blob Storage over MLflow on ACI for model registry
 
-**Decision:** Use Azure Blob Storage with versioning enabled as a lightweight model registry, rather than deploying a dedicated MLflow Tracking Server on Azure Container Instances.
+**Decision:** Use Azure Blob Storage with prefix-based promotion as a lightweight model registry, rather than deploying a dedicated MLflow Tracking Server on Azure Container Instances.
 
 **Options considered:**
 - **MLflow on ACI** — deploy an MLflow server as a Docker container on ACI, backed by Azure Blob Storage for artifact storage and a SQLite/PostgreSQL database for the tracking DB; provides a web UI, `mlflow.search_runs()` API, and a formal model stage lifecycle (`Staging`, `Production`, `Archived`)
 - **Azure ML Model Registry** — fully managed service within an Azure ML workspace; deep platform integration with deployment pipelines and model monitoring; requires an Azure ML workspace (~£15–20/month minimum)
-- **Versioned Blob Storage with manifest** — enable Blob versioning on the existing storage account; after each training run, write `model.pkl` and capture the Blob version ID; record that ID alongside `git_commit`, `promoted_at`, `roc_auc`, and `accuracy` in a manifest JSON file (`artifacts/registry-manifest.json`)
+- **Prefix-based Blob Storage** — use the existing storage account with a prefix-based promotion path: `builds/<buildId>/` (per-build artifacts) → `staging/artifacts/` → `production/artifacts/`; each stage's inference pods load from the corresponding prefix via `MODEL_BLOB_PREFIX`
 - **Git-based only** — tag the Git commit that produced each model; no model artifact stored separately from the Docker image bake step
 
-**Choice:** Versioned Blob Storage with manifest
+**Choice:** Prefix-based Blob Storage
 
 **Reason:**
 
-| Concern | MLflow on ACI | Azure ML Registry | Blob + Manifest | Git only |
+| Concern | MLflow on ACI | Azure ML Registry | Prefix-based Blob | Git only |
 |---|---|---|---|---|
-| **New infrastructure** | ACI instance, MLflow container, SQL backend | Full Azure ML workspace | Blob versioning on existing storage account (already on the I14 list) | None |
+| **New infrastructure** | ACI instance, MLflow container, SQL backend | Full Azure ML workspace | None — uses existing Blob Storage account | None |
 | **Monthly cost** | ~£3–5 (ACI compute) | ~£15–20 (workspace) | Negligible (storage cost for small model files) | Free |
 | **Operational surface** | New service to patch, restart, and monitor | Fully managed | None — Blob Storage already provisioned | None |
-| **Model promotion** | Formal `transition_model_version_stage()` API call | Managed pipeline | Update `promoted_at` field in manifest, commit, push | Re-tag Git commit |
-| **Cross-run comparison** | Web UI + `mlflow.search_runs()` | Managed UI | Compare manifest files or `metrics.json` across Git tags | Manual |
-| **Rollback** | Stage transition + redeploy | Managed | Pin image build to a previous Blob version ID from manifest | `git checkout <tag>` |
-| **Code changes** | `mlflow.log_*` throughout `src/train.py`, `src/evaluate.py`, `main.py` | Azure ML SDK changes throughout | Write manifest in `main.py train` after existing `joblib.dump()` call | None |
+| **Model promotion** | Formal `transition_model_version_stage()` API call | Managed pipeline | Copy artifacts from `builds/<buildId>/` to `staging/artifacts/` or `production/artifacts/` | Re-tag Git commit |
+| **Cross-run comparison** | Web UI + `mlflow.search_runs()` | Managed UI | Compare `metrics.json` across build prefixes | Manual |
+| **Rollback** | Stage transition + redeploy | Managed | Re-copy a previous build's artifacts to the target prefix | `git checkout <tag>` |
+| **Code changes** | `mlflow.log_*` throughout `src/train.py`, `src/evaluate.py`, `main.py` | Azure ML SDK changes throughout | Already implemented — `src/storage.py` handles Blob upload/download via `MODEL_BLOB_PREFIX` | None |
 
-**Manifest schema** (`artifacts/registry-manifest.json`):
+**Tradeoff accepted:** The prefix-based approach does not provide MLflow's cross-run experiment comparison UI, formal stage lifecycle with approval gates, automatic parameter/metric logging, or immutable artifact versioning with version IDs. At case study scale — one model type, weekly retraining, a single promotion path — these capabilities deliver no material operational value. Their absence removes an entire service from the operational surface proportionately.
 
-```json
-{
-  "git_commit": "a3f5e21",
-  "blob_version_id": "01D8A3F5E21B4C7D...",
-  "promoted_at": "2026-03-24T12:00:00Z",
-  "roc_auc": 0.912,
-  "accuracy": 0.899
-}
-```
-
-**Tradeoff accepted:** The Blob + Manifest approach does not provide MLflow's cross-run experiment comparison UI, formal stage lifecycle with approval gates, or automatic parameter/metric logging from training runs. At case study scale — one model type, weekly retraining, a single promotion path — these capabilities deliver no material operational value. Their absence removes an entire service from the operational surface proportionately.
+**Future improvement:** A registry manifest file (`artifacts/registry-manifest.json`) could be added to capture `git_commit`, `blob_version_id`, `roc_auc`, `accuracy`, and `promoted_at` per promotion — providing richer traceability without introducing new infrastructure. See [future-enhancements.md § Blob Storage Registry Manifest](future-enhancements.md#blob-storage-registry-manifest) for details.
 
 **When to upgrade to MLflow:** When the project needs to compare more than a handful of experimental runs simultaneously, enforce a formal `Staging → Production` gate with team approval, or integrate with a downstream system that queries the MLflow Model Registry API. See [future-enhancements.md § MLflow on ACI](future-enhancements.md#mlflow-on-aci--model-registry-upgrade) for the implementation plan.
-
-### Fairlearn in-pipeline fairness assessment over Azure ML RAI Dashboard
-
-**Decision:** Compute fairness metrics directly in `src/evaluate.py` using Fairlearn, rather than generating a full Responsible AI dashboard via Azure ML, or addressing fairness through documentation only.
-
-**Options considered:**
-- **Fairlearn in-pipeline** — add `fairlearn` to `requirements.txt`; compute demographic parity difference and equalised odds in `src/evaluate.py` alongside existing accuracy/AUC metrics; include results in `metrics.json`; add a fairness threshold to the retraining pipeline's quality gate
-- **Azure ML RAI Dashboard** — generate an interactive Responsible AI dashboard (fairness, explainability, error analysis) via `raiwidgets` and an Azure ML compute run; requires provisioning an Azure ML workspace
-- **Documentation only** — acknowledge fairness considerations in architecture docs with no tooling change
-
-**Choice:** Fairlearn in-pipeline
-
-**Reason:**
-
-| Concern | Documentation only | Fairlearn in-pipeline | Azure ML RAI Dashboard |
-|---|---|---|---|
-| **Fairness visibility** | None — issues only surface post-deployment | Metrics in every training run; regressions caught at the quality gate | Comprehensive interactive analysis including error heatmaps and counterfactuals |
-| **New dependencies** | None | `fairlearn` (~15 MB, zero transitive deps beyond scikit-learn which is already present) | `raiwidgets`, `responsibleai`, `azure-ml-sdk` — significant dependency surface |
-| **New Azure resources** | None | None | Azure ML workspace (~£15–20/month minimum for compute) |
-| **Integration point** | N/A | `src/evaluate.py` alongside existing `roc_auc`/`accuracy` computation | Separate pipeline stage requiring Azure ML compute |
-| **Quality gate integration** | N/A | Add `demographic_parity_difference < threshold` to `retrain.yml` ValidateModel stage | Possible but requires Azure ML SDK in the pipeline agent |
-| **Portfolio signal** | Weak — awareness but no evidence | Strong — fairness metrics are measured, tracked, and gated | Strongest, but disproportionate for a single-model case study |
-
-**Sensitive features assessed:**
-
-| Feature | Fairness concern |
-|---|---|
-| `age` (binned) | Age-based discrimination in financial product eligibility |
-| `marital` | Proxy for household income; potential disparate impact |
-| `education` | Socioeconomic proxy; correlated with creditworthiness proxies |
-
-**Metrics added to `metrics.json`:**
-- `demographic_parity_difference` — max difference in positive prediction rate across groups
-- `equalized_odds_difference` — max difference in true/false positive rates across groups
-
-**Tradeoff accepted:** Fairlearn metrics measure outcome disparity but do not explain causal sources of bias (that requires SHAP/LIME explainability, available separately). The dashboard's interactive error analysis is deferred — it is most valuable when debugging an underperforming subgroup, which requires production traffic data not yet available.
-
-**When to revisit:** When the model handles real customer data, when a regulatory obligation requires documented fairness evidence (e.g., Fair Lending Act, ECOA for financial services), or when a specific subgroup underperformance is identified in production monitoring.
 
 ---
 
@@ -175,7 +127,7 @@ The NGINX Ingress path is the correct production answer. It is deferred because:
 ```hcl
 terraform {
   backend "azurerm" {
-    resource_group_name  = "bank-marketing-rg"
+    resource_group_name  = "rg-bank-marketing"
     storage_account_name = "<storage-account>"
     container_name       = "tfstate"
     key                  = "bank-marketing.tfstate"

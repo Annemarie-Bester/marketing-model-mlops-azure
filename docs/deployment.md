@@ -112,8 +112,8 @@ spec:
                   key: CONTAINER_NAME
             - name: MODEL_BLOB_PREFIX
               value: "production"
-      imagePullSecrets:
-        - name: acr-secret
+      # imagePullSecrets not required — AKS managed identity has AcrPull
+      # via --attach-acr (see notebooks/07_operationalisation.ipynb § 4)
 ```
 
 | Field | Value | Rationale |
@@ -223,8 +223,8 @@ spec:
                   key: CONTAINER_NAME
             - name: MODEL_BLOB_PREFIX
               value: "staging"
-      imagePullSecrets:
-        - name: acr-secret
+      # imagePullSecrets not required — AKS managed identity has AcrPull
+      # via --attach-acr (see notebooks/07_operationalisation.ipynb § 4)
 ```
 
 ### Staging Service
@@ -390,6 +390,6 @@ This is a lightweight inference workload:
 - **[11]** Microsoft. [Build and deploy to Azure Kubernetes Service with Azure Pipelines](https://learn.microsoft.com/en-us/azure/aks/devops-pipeline). Full two-stage pipeline walkthrough (Build → Deploy) with Docker@2 and KubernetesManifest@1 tasks — the CI/CD pattern this deployment configuration is designed to receive.
 - **[29]** Microsoft. [Core concepts for Azure Kubernetes Service (AKS)](https://learn.microsoft.com/en-us/azure/aks/concepts-clusters-workloads). Foundational reference for AKS `Deployment` and `Service` resources, pod scheduling, node pools, and the Kubernetes primitives used throughout this document.
 - **[21]** Microsoft. [Deploy a machine learning model to Azure Kubernetes Service (v1)](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-deploy-azure-kubernetes-service?view=azureml-api-1&tabs=python). Reference for AKS inference configuration — health probe setup, resource limits, and deployment configuration patterns applicable to the serving layer.
-- **[24]** Microsoft. [Quickstart: Create an Azure Container Registry using Terraform](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-get-started-terraform?tabs=azure-cli). ACR provisioning reference covering SKU selection, admin user configuration, and AKS integration via `imagePullSecrets` — the mechanism used in `k8s/deployment.yaml`.
+- **[24]** Microsoft. [Quickstart: Create an Azure Container Registry using Terraform](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-get-started-terraform?tabs=azure-cli). ACR provisioning reference covering SKU selection, admin user configuration, and AKS integration via managed identity — the mechanism used in `k8s/deployment.yaml`.
 
 For this case study, fixed replicas are sufficient. A `HorizontalPodAutoscaler` would be the next step for production scale.

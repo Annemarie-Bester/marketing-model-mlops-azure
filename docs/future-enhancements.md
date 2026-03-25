@@ -13,8 +13,9 @@ Each section identifies the relevant MLOps maturity level and provides official 
 1. [Ephemeral Per-PR Environments (Review Apps)](#ephemeral-per-pr-environments-review-apps)
 2. [Blue-Green Deployment](#blue-green-deployment)
 3. [Drift Detection & Automated Retraining](#drift-detection--automated-retraining)
-4. [MLflow on ACI — Model Registry Upgrade](#mlflow-on-aci--model-registry-upgrade)
-5. [AKS-Based Model Training (Kubernetes Job)](#aks-based-model-training-kubernetes-job)
+4. [Blob Storage Registry Manifest](#blob-storage-registry-manifest)
+5. [MLflow on ACI — Model Registry Upgrade](#mlflow-on-aci--model-registry-upgrade)
+6. [AKS-Based Model Training (Kubernetes Job)](#aks-based-model-training-kubernetes-job)
 
 ---
 
@@ -248,6 +249,63 @@ For this project's bank marketing classification model, **data drift on input fe
 
 ---
 
+## Blob Storage Registry Manifest
+
+*Relevant to: Model promotion workflow — traceability and auditability*
+*MLOps maturity level: 1–2*
+*Prerequisite: Blob versioning enabled (I14)*
+
+### Context
+
+The current model registry uses [prefix-based Azure Blob Storage promotion](design-tradeoffs.md#prefix-based-azure-blob-storage-over-mlflow-on-aci-for-model-registry) — artifacts flow from `builds/<buildId>/` → `staging/artifacts/` → `production/artifacts/`. This works well at case study scale, but does not record *which* build produced the current production model, what its evaluation metrics were, or when promotion occurred.
+
+A **registry manifest file** (`artifacts/registry-manifest.json`) would sit alongside the existing prefix-based promotion and capture this metadata — providing richer traceability without introducing new infrastructure.
+
+### Manifest Schema
+
+```json
+{
+  "git_commit": "a3f5e21",
+  "blob_version_id": "01D8A3F5E21B4C7D...",
+  "promoted_at": "2026-03-24T12:00:00Z",
+  "roc_auc": 0.912,
+  "accuracy": 0.899
+}
+```
+
+### What It Enables
+
+- **Audit trail** — answer "which commit and build produced the current production model?" without inspecting pipeline logs
+- **Metric comparison** — compare the current production model's metrics against a candidate before promotion
+- **Rollback targeting** — identify the previous production model's `blob_version_id` to restore, rather than guessing which build prefix to re-copy
+- **Blob versioning integration** — when Blob versioning is enabled (I14), the `blob_version_id` field provides an immutable pointer to the exact artifact version
+
+### Implementation
+
+After the existing `joblib.dump()` call in `main.py train`, write the manifest:
+
+```python
+import json, datetime
+
+manifest = {
+    "git_commit": os.environ.get("BUILD_SOURCEVERSION", "local"),
+    "blob_version_id": blob_version_id,  # from Blob upload response
+    "promoted_at": datetime.datetime.utcnow().isoformat() + "Z",
+    "roc_auc": metrics["roc_auc"],
+    "accuracy": metrics["accuracy"],
+}
+with open("artifacts/registry-manifest.json", "w") as f:
+    json.dump(manifest, f, indent=2)
+```
+
+The manifest file is uploaded alongside `model.pkl` and `metrics.json` during the existing Blob upload step. The CI/CD pipeline's promotion stage copies it along with the other artifacts.
+
+### When to Adopt
+
+Adopt when the project needs to answer promotion audit questions programmatically — e.g., "what model is in production, when was it promoted, and what were its metrics?" — without relying on pipeline run history alone.
+
+---
+
 ## MLflow on ACI — Model Registry Upgrade
 
 *Relevant to: Training pipeline and model promotion workflow*
@@ -255,13 +313,13 @@ For this project's bank marketing classification model, **data drift on input fe
 
 ### Context
 
-The current model registry uses [Versioned Azure Blob Storage with a manifest file](design-tradeoffs.md#versioned-azure-blob-storage-with-manifest-over-mlflow-on-aci-for-model-registry) — chosen because it introduces zero new infrastructure, uses the existing Blob Storage account, and proportionately fits a case study with a single model type and weekly retraining. The tradeoff accepted is that cross-run experiment comparison and a formal stage lifecycle are not available.
+The current model registry uses [prefix-based Azure Blob Storage promotion](design-tradeoffs.md#prefix-based-azure-blob-storage-over-mlflow-on-aci-for-model-registry) — chosen because it introduces zero new infrastructure, uses the existing Blob Storage account, and proportionately fits a case study with a single model type and weekly retraining. The tradeoff accepted is that cross-run experiment comparison and a formal stage lifecycle are not available.
 
-MLflow on ACI becomes the right upgrade when the project outgrows the manifest approach — specifically when:
+MLflow on ACI becomes the right upgrade when the project outgrows the prefix-based approach — specifically when:
 
 - More than a handful of experimental runs need to be compared simultaneously (e.g., hyperparameter search, feature engineering variants)
 - A formal `Staging → Production` promotion workflow with team approval is needed
-- Downstream tooling (e.g., an A/B testing framework or multi-model serving layer) needs to query a model registry API rather than read a manifest file
+- Downstream tooling (e.g., an A/B testing framework or multi-model serving layer) needs to query a model registry API rather than read from Blob prefixes
 
 ### Architecture
 
@@ -298,7 +356,7 @@ docker push bankmarketingacr.azurecr.io/mlflow-server:latest
 
 # Deploy to ACI with Blob Storage backend
 az container create \
-  --resource-group bank-marketing-rg \
+  --resource-group rg-bank-marketing \
   --name mlflow-server \
   --image bankmarketingacr.azurecr.io/mlflow-server:latest \
   --ports 5000 \
@@ -361,14 +419,14 @@ client.transition_model_version_stage("bank-marketing-pipeline", new_version, "P
 | Factor | Rationale |
 |---|---|
 | **No multi-run comparison need** | One model type, one hyperparameter set, weekly retraining — there is no queue of experimental runs to compare |
-| **Existing manifest is sufficient** | `registry-manifest.json` + Blob versioning (I14) captures every promotable fact: commit, artifact version, metrics, promotion timestamp |
+| **Existing approach is sufficient** | Prefix-based Blob promotion captures the necessary artifacts per environment; a [registry manifest](future-enhancements.md#blob-storage-registry-manifest) can add richer traceability without new infrastructure |
 | **New operational surface** | MLflow on ACI is a service that can go down, need restart, and accrue a failure mode. Adding it before the baseline is production-stable increases operational risk |
 | **Cost proportionality** | £3–5/month is low, but the operational overhead is disproportionate to the value delivered at case study scale |
 
 **Key references** — numbers correspond to [REFERENCES.md](../REFERENCES.md):
 
 - **[71]** MLflow. [MLflow Tracking](https://mlflow.org/docs/latest/tracking.html). Official documentation for the MLflow Tracking API — covers `mlflow.log_params()`, `mlflow.log_metrics()`, `mlflow.sklearn.log_model()`, and the backend store / artifact store configuration options used when deploying on ACI.
-- **[72]** MLflow. [MLflow Model Registry](https://mlflow.org/docs/latest/model-registry.html). Documents the `MlflowClient` API for model registration, version management, and stage transitions (`None → Staging → Production → Archived`) — the promotion workflow that replaces the current manifest-based approach when upgrading.
+- **[72]** MLflow. [MLflow Model Registry](https://mlflow.org/docs/latest/model-registry.html). Documents the `MlflowClient` API for model registration, version management, and stage transitions (`None → Staging → Production → Archived`) — the promotion workflow that replaces the current prefix-based approach when upgrading.
 - **[73]** Microsoft. [Azure Container Instances documentation](https://learn.microsoft.com/en-us/azure/container-instances/). Official ACI reference covering container group deployment, environment variable configuration, DNS label setup, and VNet integration — the deployment target for the MLflow server.
 
 ---

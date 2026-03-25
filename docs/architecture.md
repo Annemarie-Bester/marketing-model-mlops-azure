@@ -35,6 +35,12 @@ End-to-end infrastructure and system design for the Bank Marketing MLOps project
 
 ---
 
+## Solution Overview
+
+The Component Summary above maps each layer to its Azure resource. The sections below expand each layer in detail — starting with the development environment and working outward through infrastructure, CI/CD, containers, Kubernetes, observability, and the ML data flow.
+
+---
+
 ## Development Environment
 
 Local development runs inside a VS Code Dev Container. All dependencies, tooling, and CLI access are pre-configured — no host machine setup beyond Docker Desktop and VS Code.
@@ -88,7 +94,7 @@ flowchart TD
 
 ### ACR–AKS Integration
 
-AKS is provisioned with `--attach-acr bankmarketingacr`, which grants the AKS managed identity the `AcrPull` role on the registry. In addition, the Kubernetes manifests include `imagePullSecrets: acr-secret` as a portable fallback — this supports local KinD clusters and environments where managed identity is not configured. In AKS with `--attach-acr`, the `imagePullSecrets` reference is harmless if the secret does not exist (the managed identity takes precedence).
+AKS is provisioned with `--attach-acr bankmarketingacr`, which grants the AKS managed identity the `AcrPull` role on the registry. The Kubernetes manifests rely solely on this managed identity for image pulls — no `imagePullSecrets` are configured. For local KinD clusters, images are loaded directly via `kind load docker-image` rather than pulled from ACR.
 
 ### RBAC Role Assignments
 
@@ -591,7 +597,7 @@ flowchart TD
 | Two-pipeline CI/CD + retraining | Isolates PR validation from deployment logic; retrain pipeline handles data-driven model updates independently of code changes |
 | Console-first provisioning | Azure CLI for initial setup; Terraform planned as a future enhancement after the baseline is validated |
 | ACR Basic SKU | Sufficient for a single-service project; upgradeable if geo-replication or content trust is needed |
-| AKS with `--attach-acr` | Grants `AcrPull` via managed identity. Manifests also include `imagePullSecrets: acr-secret` for portability across local KinD and AKS environments |
+| AKS with `--attach-acr` | Grants `AcrPull` via managed identity — no `imagePullSecrets` needed in manifests |
 | Blob Storage as model registry | Model artifacts stored in Azure Blob Storage with promotion pattern: `builds/<buildId>/` → `staging/` → `production/`. Simple, auditable, no additional registry service needed |
 | 2× Standard_B2s nodes | Cost-effective burstable VMs suited to lightweight sklearn inference |
 | Namespace-based environment isolation | Two namespaces (`bank-marketing` + `bank-marketing-dev`) within the same AKS cluster — provides a real staging environment without provisioning a second cluster. Follows [Microsoft's AKS isolation guidance](https://learn.microsoft.com/en-us/azure/aks/operator-best-practices-cluster-isolation): *"Separate teams and projects using logical isolation. Minimize the number of physical AKS clusters you deploy."* |
