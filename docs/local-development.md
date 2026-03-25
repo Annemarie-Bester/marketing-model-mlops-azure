@@ -235,9 +235,9 @@ docker ps
 
 ## 7. Docker Build
 
-> **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 2–3 verify the model artifact exists and build the Docker images.
+> **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 2–6 build and test the training container; Sections 7–13 build and test the inference container.
 
-This project uses a **dual-container architecture**: a training container (`Dockerfile.train`) that produces `model.pkl`, and an inference container (`Dockerfile.infer`) that bakes the model in for serving. The local build mirrors the CI pipeline flow.
+This project uses a **dual-container architecture**: a training container (`Dockerfile.train`) that produces `model.pkl`, and an inference container (`Dockerfile.infer`) that loads the model at runtime via a mounted volume. The local build mirrors the CI pipeline flow.
 
 ### Build the Training Image
 
@@ -257,13 +257,55 @@ docker run --rm \
 
 This mounts `data/` (input) and `artifacts/` (output) from your workspace. After the run, `artifacts/model.pkl` and `artifacts/metrics.json` are available on your local file system.
 
+### Validate Training Container Output
+
+After running the training container, validate the artifacts before proceeding to the inference image build:
+
+```bash
+# Check metrics.json has expected keys and values
+python3 -c "
+import json, joblib
+
+# Validate metrics
+with open('artifacts/metrics.json') as f:
+    m = json.load(f)
+for key in ['model_type', 'test_size', 'roc_auc', 'f1_minority_class', 'f1_macro']:
+    assert key in m, f'Missing key: {key}'
+assert 0 < m['roc_auc'] <= 1, f'roc_auc out of range: {m[\"roc_auc\"]}'
+print('metrics.json valid:', m)
+
+# Validate model is loadable
+pipeline = joblib.load('artifacts/model.pkl')
+assert hasattr(pipeline, 'predict'), 'Model has no predict method'
+assert hasattr(pipeline, 'predict_proba'), 'Model has no predict_proba method'
+print(f'model.pkl valid: {[name for name, _ in pipeline.steps]}')
+"
+```
+
+### Verify Training Reproducibility
+
+Re-run the training container and confirm metrics are identical (fixed `random_state` in `config.yaml` ensures determinism):
+
+```bash
+# Run training twice and compare metrics
+docker run --rm \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/artifacts:/app/artifacts \
+  bank-marketing-train:local
+
+cat artifacts/metrics.json
+# Metrics should be identical to the first run
+```
+
 ### Build the Inference Image
 
-The inference image requires `artifacts/model.pkl` to exist — it is `COPY`'d at build time:
+The inference image does **not** contain `model.pkl` — the model is loaded at runtime via a mounted volume (local) or Azure Blob Storage (AKS):
 
 ```bash
 docker build -f Dockerfile.infer -t bank-marketing-api:local .
 ```
+
+> `artifacts/model.pkl` must exist on the host for the volume mount to work when running the container.
 
 ### Verify Images
 
@@ -284,7 +326,7 @@ docker images | grep bank-marketing
 
 ## 8. Local Container Smoke Test
 
-> **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 4–10 run the inference container, health check, prediction tests, edge cases, scripted pass/fail smoke test, log inspection, and cleanup.
+> **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 8–13 run the inference container, health check, prediction tests, edge cases, scripted pass/fail smoke test, log inspection, and cleanup.
 
 Run the inference image (built in [Section 7](#7-docker-build)) and verify the API starts correctly and responds to requests.
 
@@ -295,7 +337,10 @@ Run the inference image (built in [Section 7](#7-docker-build)) and verify the A
 > **API key authentication:** The `/predict` endpoint requires an `X-API-Key` header when the `API_KEY` env var is set. Pass `-e API_KEY=<key>` to the container and include `-H "X-API-Key: <key>"` in prediction requests. The `/health` endpoint remains unauthenticated (required for K8s probes).
 
 ```bash
-docker run -d --name smoke-test --network container:$(hostname) -e API_KEY=test-local-key bank-marketing-api:local
+docker run -d --name smoke-test --network container:$(hostname) \
+  -v $(pwd)/artifacts:/app/artifacts:ro \
+  -e API_KEY=test-local-key \
+  bank-marketing-api:local
 ```
 
 ### Run Smoke Tests
@@ -352,7 +397,10 @@ Combine health check and prediction into a single pass/fail script:
 set -e
 
 echo "Starting container..."
-docker run -d --name smoke-test --network container:$(hostname) -e API_KEY=test-local-key bank-marketing-api:local
+docker run -d --name smoke-test --network container:$(hostname) \
+  -v $(pwd)/artifacts:/app/artifacts:ro \
+  -e API_KEY=test-local-key \
+  bank-marketing-api:local
 sleep 5
 
 echo "Health check..."
@@ -450,12 +498,12 @@ kubectl get nodes
 
 ### Two-Namespace Local Setup
 
-The AKS cluster uses two namespaces — `bank-marketing` (production, deployed from `main`) and `bank-marketing-dev` (staging, deployed from `dev`). The local kind cluster mirrors this structure exactly, so you can validate both namespace configurations and the staging smoke-test flow before pushing to AKS.
+The AKS cluster uses two namespaces — `bank-marketing` (production inference, deployed from `main`) and `bank-marketing-dev` (staging inference, deployed from `dev`). The local kind cluster mirrors this structure exactly. Model training runs as a `docker run` on the CI agent (or locally) — not as a Kubernetes workload.
 
 ```
 kind cluster: bm-local
-├── namespace: bank-marketing        ← production (k8s/deployment.yaml + k8s/service.yaml)
-└── namespace: bank-marketing-dev    ← staging    (k8s/deployment-dev.yaml + k8s/service-dev.yaml + k8s/quota-dev.yaml)
+├── namespace: bank-marketing            ← production inference  (k8s/deployment.yaml + k8s/service.yaml)
+└── namespace: bank-marketing-dev        ← staging inference     (k8s/deployment-dev.yaml + k8s/service-dev.yaml + k8s/quota-dev.yaml)
 ```
 
 ### Deploy Locally
@@ -617,7 +665,7 @@ Expected output shows `Used` values at or below `Hard` limits. If a second pod i
 ### Clean Up
 
 ```bash
-# Delete resources from both namespaces
+# Delete resources from all namespaces
 kubectl delete -f k8s/deployment.yaml -f k8s/service.yaml -n bank-marketing
 kubectl delete -f k8s/deployment-dev.yaml -f k8s/service-dev.yaml -f k8s/quota-dev.yaml -n bank-marketing-dev
 

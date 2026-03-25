@@ -19,7 +19,6 @@ Design decisions:
 import logging
 import os
 
-import joblib
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
@@ -114,26 +113,25 @@ def train(X_train, y_train, preprocessor, config: dict) -> Pipeline:
 
 
 def save_model(pipeline: Pipeline, config: dict) -> str:
-    """Persist the trained pipeline to disk as a .pkl artifact.
+    """Persist the trained pipeline as a .pkl artifact.
 
     The artifact contains both the preprocessor and the classifier,
     making it fully self-contained for serving via the FastAPI service.
+    Delegates to the storage module so this works on local disk or Azure Blob.
 
     Args:
         pipeline: Fitted sklearn Pipeline from train().
         config: Full parsed config dict.
 
     Returns:
-        Absolute path to the saved artifact.
+        Path (local) or blob key where the artifact was saved.
     """
-    # Resolve artifact path relative to repo root (same dir as config.yaml)
+    from src import storage
+
     config_dir = os.path.dirname(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
+        os.path.abspath(os.path.join(
+            os.path.dirname(__file__), "..", "config.yaml"))
     )
-    artifact_path = os.path.join(config_dir, config["artifacts"]["model_path"])
-    os.makedirs(os.path.dirname(artifact_path), exist_ok=True)
-
-    joblib.dump(pipeline, artifact_path)
-    logger.info("Model artifact saved: %s", artifact_path)
-
-    return artifact_path
+    return storage.save_model(
+        pipeline, config["artifacts"]["model_path"], config_dir=config_dir
+    )

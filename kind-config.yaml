@@ -8,3 +8,9 @@ nodes:
         kind: KubeletConfiguration
         apiVersion: kubelet.config.k8s.io/v1beta1
         cgroupDriver: cgroupfs
+    # Mount host directories so containers can read data / write artifacts locally
+    extraMounts:
+      - hostPath: ./data
+        containerPath: /data
+      - hostPath: ./artifacts
+        containerPath: /artifacts

@@ -1,7 +1,0 @@
-{
-  "model_type": "logistic_regression",
-  "test_size": 0.2,
-  "roc_auc": 0.8935,
-  "f1_minority_class": 0.4929,
-  "f1_macro": 0.6858
-}

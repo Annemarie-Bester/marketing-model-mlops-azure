@@ -15,11 +15,9 @@ Note: Accuracy is intentionally excluded. With 88.4% majority class, a naive
 "always predict no" classifier achieves 88.4% accuracy — misleading and useless.
 """
 
-import json
 import logging
 import os
 
-import joblib
 from sklearn.metrics import (
     classification_report,
     f1_score,
@@ -63,17 +61,19 @@ def evaluate(pipeline: Pipeline, X_test, y_test, config: dict) -> dict:
     logger.info("F1 macro        : %.4f", f1_macro)
     logger.info(
         "Classification Report:\n%s",
-        classification_report(y_test, y_pred, target_names=["no (0)", "yes (1)"]),
+        classification_report(y_test, y_pred, target_names=[
+                              "no (0)", "yes (1)"]),
     )
 
     return metrics
 
 
 def load_model(config: dict) -> Pipeline:
-    """Load a trained pipeline artifact from disk.
+    """Load a trained pipeline artifact from disk or cloud storage.
 
-    Used when evaluate() is called independently of train() (e.g. re-evaluation
-    after deployment or in a separate CI step).
+    The model path is resolved in this order:
+        1. MODEL_PATH env var (allows runtime override without config change)
+        2. config["artifacts"]["model_path"] from config.yaml
 
     Args:
         config: Full parsed config dict.
@@ -81,43 +81,38 @@ def load_model(config: dict) -> Pipeline:
     Returns:
         Fitted sklearn Pipeline loaded from the artifact path in config.
     """
-    config_dir = os.path.dirname(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
+    from src import storage
+
+    model_path = os.environ.get(
+        "MODEL_PATH", config["artifacts"]["model_path"]
     )
-    artifact_path = os.path.join(config_dir, config["artifacts"]["model_path"])
-
-    if not os.path.exists(artifact_path):
-        raise FileNotFoundError(
-            f"Model artifact not found at '{artifact_path}'. "
-            "Run 'python main.py train' first."
-        )
-
-    pipeline = joblib.load(artifact_path)
-    logger.info("Loaded model artifact from: %s", artifact_path)
-    return pipeline
+    config_dir = os.path.dirname(
+        os.path.abspath(os.path.join(
+            os.path.dirname(__file__), "..", "config.yaml"))
+    )
+    return storage.load_model(model_path, config_dir=config_dir)
 
 
 def save_metrics(metrics: dict, config: dict) -> str:
     """Persist the metrics dict to artifacts/metrics.json.
 
     The JSON format is intentionally simple: git-diffable, CI/CD-parseable,
-    and readable by stakeholders without tooling.
+    and readable by stakeholders without tooling. Delegates to the storage
+    module so this works on local disk or Azure Blob.
 
     Args:
         metrics: Dict from evaluate().
         config: Full parsed config dict.
 
     Returns:
-        Absolute path to the saved metrics file.
+        Path (local) or blob key where the metrics file was saved.
     """
+    from src import storage
+
     config_dir = os.path.dirname(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
+        os.path.abspath(os.path.join(
+            os.path.dirname(__file__), "..", "config.yaml"))
     )
-    metrics_path = os.path.join(config_dir, config["artifacts"]["metrics_path"])
-    os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
-
-    with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=2)
-
-    logger.info("Metrics saved: %s", metrics_path)
-    return metrics_path
+    return storage.save_json(
+        metrics, config["artifacts"]["metrics_path"], config_dir=config_dir
+    )

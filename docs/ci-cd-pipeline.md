@@ -42,28 +42,34 @@ flowchart TD
         D_INSTALL["Install deps"]
         D_TEST["Run pytest"]
         D_K8S["kubeconform"]
+        D_DETECT["DetectChanges\n(NEEDS_TRAIN?)"]
         D_INSTALL --> D_TEST --> D_K8S
     end
 
-    subgraph TRAIN_DEV["TrainModel Stage"]
+    subgraph TRAIN_DEV["TrainModel Stage (conditional)"]
         direction TB
+        DT_NOTE["Skipped if only\ninference files changed"]
         DT_BUILD["Build train image"]
+        DT_DATA["Download data from Blob"]
         DT_RUN["Run training container"]
+        DT_UPLOAD["Upload model to Blob\n(model-registry/builds/)"]
         DT_PUSH["Push train image → ACR"]
         DT_PUB["Publish model artifacts"]
-        DT_BUILD --> DT_RUN --> DT_PUSH --> DT_PUB
+        DT_NOTE -.-> DT_BUILD --> DT_DATA --> DT_RUN --> DT_UPLOAD --> DT_PUSH --> DT_PUB
     end
 
     subgraph CD_DEV["CD — dev (staging)"]
         direction TB
-        DEV_DL["Download model artifacts"]
+        DEV_PROMOTE["Promote model to\nstaging/artifacts/ in Blob\n(if TRAINING_RAN)"]
         DEV_BUILD["Build infer image\n+ push → ACR (dev-buildId)"]
         DEV_DEPLOY["kubectl apply\nbank-marketing-dev"]
         DEV_SMOKE["In-cluster smoke test\n(kubectl exec)"]
-        DEV_DL --> DEV_BUILD --> DEV_DEPLOY --> DEV_SMOKE
+        DEV_RESTART["Rolling restart\n(if TRAINING_RAN)"]
+        DEV_PROMOTE --> DEV_BUILD --> DEV_DEPLOY --> DEV_SMOKE --> DEV_RESTART
     end
 
     CI_DEV --> TRAIN_DEV --> CD_DEV
+    D_DETECT -.->|NEEDS_TRAIN| TRAIN_DEV
 ```
 
 </td><td>
@@ -77,28 +83,34 @@ flowchart TD
         M_INSTALL["Install deps"]
         M_TEST["Run pytest"]
         M_K8S["kubeconform"]
+        M_DETECT["DetectChanges\n(NEEDS_TRAIN?)"]
         M_INSTALL --> M_TEST --> M_K8S
     end
 
-    subgraph TRAIN_MAIN["TrainModel Stage"]
+    subgraph TRAIN_MAIN["TrainModel Stage (conditional)"]
         direction TB
+        MT_NOTE["Skipped if only\ninference files changed"]
         MT_BUILD["Build train image"]
+        MT_DATA["Download data from Blob"]
         MT_RUN["Run training container"]
+        MT_UPLOAD["Upload model to Blob\n(model-registry/builds/)"]
         MT_PUSH["Push train image → ACR"]
         MT_PUB["Publish model artifacts"]
-        MT_BUILD --> MT_RUN --> MT_PUSH --> MT_PUB
+        MT_NOTE -.-> MT_BUILD --> MT_DATA --> MT_RUN --> MT_UPLOAD --> MT_PUSH --> MT_PUB
     end
 
     subgraph CD_MAIN["CD — main (production)"]
         direction TB
-        MAIN_DL["Download model artifacts"]
+        MAIN_PROMOTE["Promote model to\nproduction/artifacts/ in Blob\n(if TRAINING_RAN)"]
         MAIN_BUILD["Build infer image\n+ push → ACR"]
         MAIN_DEPLOY["kubectl apply"]
         MAIN_SMOKE["Live smoke test"]
-        MAIN_DL --> MAIN_BUILD --> MAIN_DEPLOY --> MAIN_SMOKE
+        MAIN_RESTART["Rolling restart\n(if TRAINING_RAN)"]
+        MAIN_PROMOTE --> MAIN_BUILD --> MAIN_DEPLOY --> MAIN_SMOKE --> MAIN_RESTART
     end
 
     CI_MAIN --> TRAIN_MAIN --> CD_MAIN
+    M_DETECT -.->|NEEDS_TRAIN| TRAIN_MAIN
 ```
 
 </td></tr>
@@ -116,18 +128,21 @@ flowchart TD
         RT_PULL["Pull train-latest from ACR"]
         RT_RUN["Run training container"]
         RT_PUB["Publish model artifacts"]
+        RT_UPLOAD["Upload model to Blob"]
         RV["ValidateModel:\nROC-AUC quality gate"]
+        RS_PROMOTE["Promote to staging/ in Blob"]
         RS_BUILD["Build infer image"]
         RS_DEPLOY["Deploy to staging"]
         RS_SMOKE["Smoke test"]
         RP_APPROVE["Manual approval"]
+        RP_PROMOTE["Promote to production/ in Blob"]
         RP_BUILD["Build infer image"]
         RP_DEPLOY["Deploy to production"]
         RP_METRICS["Update baseline metrics"]
 
-        RT_DATA --> RT_PULL --> RT_RUN --> RT_PUB --> RV
-        RV --> RS_BUILD --> RS_DEPLOY --> RS_SMOKE
-        RS_SMOKE --> RP_APPROVE --> RP_BUILD --> RP_DEPLOY --> RP_METRICS
+        RT_DATA --> RT_PULL --> RT_RUN --> RT_PUB --> RT_UPLOAD --> RV
+        RV --> RS_PROMOTE --> RS_BUILD --> RS_DEPLOY --> RS_SMOKE
+        RS_SMOKE --> RP_APPROVE --> RP_PROMOTE --> RP_BUILD --> RP_DEPLOY --> RP_METRICS
     end
 
     SCHED["Weekly cron / manual / drift alert"] --> P3
@@ -176,8 +191,8 @@ The PR validation pipeline builds **both containers** locally (no ACR push) to v
 3. Validate K8s manifests with `kubeconform`
 4. Build the training image (`Dockerfile.train`)
 5. Run the training container — produces `model.pkl` on the agent
-6. Build the inference image (`Dockerfile.infer`) — bakes in `model.pkl`
-7. Ephemeral container smoke test — `GET /health` against the inference container
+6. Build the inference image (`Dockerfile.infer`) — model is NOT baked in; loaded from Blob Storage (production) or volume mount (local)
+7. Ephemeral container smoke test — `GET /health` against the inference container (model mounted from agent filesystem)
 
 ### What This Validates
 
@@ -193,41 +208,60 @@ The PR validation pipeline builds **both containers** locally (no ACR push) to v
 
 ## Pipeline 2: CI/CD (`azure-pipelines.yml`)
 
-The CI/CD pipeline is triggered by **pushes** (merges) to `dev` and `main`. It runs a shared CI stage, then a TrainModel stage (build + run training container, push to ACR, publish model artifacts), followed by a **branch-conditional CD stage** that builds the inference image with the model baked in:
+The CI/CD pipeline is triggered by **pushes** (merges) to `dev` and `main`. It runs a shared CI stage (tests + change detection), then a **conditional** TrainModel stage (skipped when only inference-relevant files changed), followed by a **branch-conditional CD stage** that always runs — promoting the model only when training produced a new artifact:
 
-- **Merge → `dev`**: Staging deployment — downloads model artifacts, builds inference image with `model.pkl` baked in, pushes to ACR, deploys to the `bank-marketing-dev` namespace, and runs an in-cluster smoke test
-- **Merge → `main`**: Production deployment — downloads model artifacts, builds inference image, pushes to ACR, deploys to AKS `bank-marketing` namespace, and runs a live smoke test against the external endpoint
+- **Merge → `dev`**: Staging deployment — conditionally promotes model to `staging/artifacts/` in Blob Storage, builds inference image, pushes to ACR, deploys to the `bank-marketing-dev` namespace, runs an in-cluster smoke test, and triggers a rolling restart when a new model was promoted. Pods load `model.pkl` from Blob Storage at runtime via `MODEL_BLOB_PREFIX=staging`.
+- **Merge → `main`**: Production deployment — conditionally promotes model to `production/artifacts/` in Blob Storage, builds inference image, pushes to ACR, deploys to AKS `bank-marketing` namespace, runs a live smoke test, and triggers a rolling restart when a new model was promoted. Pods load `model.pkl` from Blob Storage at runtime via `MODEL_BLOB_PREFIX=production`.
 
-### CI Stage — Test & Validate
+This means **inference-only changes** (API code, K8s manifests, Dockerfiles) skip the expensive training stage and deploy immediately — training and inference images can be updated independently.
 
-The CI stage runs on every push to both branches. It repeats the test and manifest validation steps from Pipeline 1 because the merge commit differs from the PR head commit — re-validation confirms nothing broke during the merge.
+### CI Stage — Test, Validate & Detect Changes
+
+The CI stage runs on every push to both branches. It contains two parallel jobs:
+
+- **Test & Validate** — repeats test and manifest validation from Pipeline 1 (the merge commit differs from the PR head commit, so re-validation is needed)
+- **DetectChanges** — diffs `HEAD~1` to determine whether training-relevant files changed, outputting `NEEDS_TRAIN=true|false`
 
 > **Pipeline file:** [`.ado/azure-pipelines.yml`](../.ado/azure-pipelines.yml)
 
+**Test & Validate job:**
 1. Install Python dependencies (`requirements-local.txt`)
 2. Run `pytest`
 3. Validate K8s manifests with `kubeconform`
 
-### TrainModel Stage — Build, Train, Push, Publish
+**DetectChanges job:**
+1. Shallow checkout (`fetchDepth: 2`)
+2. `git diff --name-only HEAD~1` to identify changed files
+3. Compare against training-relevant paths: `src/data.py`, `src/features.py`, `src/train.py`, `src/evaluate.py`, `src/config.py`, `src/storage.py`, `config.yaml`, `requirements.txt`, `main.py`, `Dockerfile.train`
+4. Force training if: git diff fails, or commit message contains `[train]`
+5. Output `NEEDS_TRAIN` as a stage-level variable for downstream stages
 
-After CI passes, the TrainModel stage builds the training container, runs training to produce `model.pkl`, pushes the training image to ACR (for reuse by the retrain pipeline), and publishes the model artifacts as a pipeline artifact for the CD stages.
+### TrainModel Stage — Build, Train, Push, Publish (Conditional)
+
+The TrainModel stage runs **only when `NEEDS_TRAIN=true`** (output from the DetectChanges job). When only inference-relevant files changed (API code, K8s manifests, Dockerfile.infer), this stage is skipped entirely — saving build time and avoiding unnecessary model rebuilds.
+
+When it runs, it builds the training container, runs training to produce `model.pkl`, pushes the training image to ACR (for reuse by the retrain pipeline), uploads model artifacts to Azure Blob Storage (model registry), and publishes them as a pipeline artifact for audit trail.
 
 1. Log in to ACR
 2. Build training image (`Dockerfile.train`)
-3. Run training container — mounts `data/` and `artifacts/` from the agent
-4. Verify `model.pkl` and `metrics.json` exist
-5. Push training image to ACR (`<buildId>` + `train-latest`)
-6. Publish `artifacts/` as a pipeline artifact (`model-artifacts`)
+3. Download training data from Azure Blob Storage
+4. Run training container — mounts `data/` and `artifacts/` from the agent
+5. Verify `model.pkl` and `metrics.json` exist
+6. Upload model artifacts to Blob Storage (`model-registry/builds/<buildId>/`)
+7. Push training image to ACR (`<buildId>` + `train-latest`)
+8. Publish `artifacts/` as a pipeline artifact (`model-artifacts`)
 
 ### CD Stage — Staging Deployment (Merge → `dev`)
 
-On merge to `dev`, the CD stage downloads the model artifacts from TrainModel, builds an inference image with `model.pkl` baked in, pushes it to ACR tagged `dev-<buildId>` + `dev-latest`, deploys to the `bank-marketing-dev` namespace, and runs an in-cluster smoke test against the internal `ClusterIP` service. The `bank-marketing` production namespace is untouched.
+On merge to `dev`, the CD stage **always runs** — regardless of whether TrainModel was skipped. It uses a `TRAINING_RAN` stage variable (derived from `dependencies.TrainModel.result`) to conditionally execute model promotion and rolling restart steps.
 
-1. Download `model-artifacts` from the TrainModel stage
-2. Stage `model.pkl` into `artifacts/` for the Docker build context
-3. Build and push inference image (`Dockerfile.infer`) to ACR as `dev-<buildId>` + `dev-latest`
-4. Deploy to `bank-marketing-dev` namespace via `KubernetesManifest@1`
-5. In-cluster smoke test — `kubectl exec` → `GET /health`
+Pods load `model.pkl` from Blob Storage at runtime via `MODEL_BLOB_PREFIX=staging` — the model is **not** baked into the Docker image.
+
+1. **Conditional:** Promote model to `staging/artifacts/` in Blob Storage (copy from `builds/<buildId>/`) — only when `TRAINING_RAN=True`
+2. Build and push inference image (`Dockerfile.infer`) to ACR as `dev-<buildId>` + `dev-latest`
+3. Deploy to `bank-marketing-dev` namespace via `KubernetesManifest@1`
+4. In-cluster smoke test — `kubectl exec` → `GET /health`
+5. **Conditional:** Rolling restart — `kubectl rollout restart` to pick up the new model from Blob Storage — only when `TRAINING_RAN=True`
 
 **What the staging deployment validates:**
 
@@ -245,21 +279,26 @@ On merge to `dev`, the CD stage downloads the model artifacts from TrainModel, b
 
 ### CD Stage — Production Deployment (Merge → `main`)
 
-On merge to `main`, the CD stage downloads the model artifacts, builds and pushes the production inference image to ACR, deploys to AKS, and runs a live smoke test against the external endpoint.
+On merge to `main`, the CD stage **always runs** — following the same conditional pattern as staging. It uses `TRAINING_RAN` to gate model promotion, baseline metrics update, and rolling restart.
 
-1. Download `model-artifacts` from the TrainModel stage
-2. Stage `model.pkl` into `artifacts/` for the Docker build context
+Pods load `model.pkl` from Blob Storage at runtime via `MODEL_BLOB_PREFIX=production` — the model is **not** baked into the Docker image.
+
+1. **Conditional:** Download pipeline artifacts (metrics.json for baseline update) — only when `TRAINING_RAN=True`
+2. **Conditional:** Promote model to `production/artifacts/` in Blob Storage (copy from `builds/<buildId>/`) — only when `TRAINING_RAN=True`
 3. Build and push inference image to ACR as `<buildId>` + `latest`
 4. Deploy to `bank-marketing` namespace via `KubernetesManifest@1`
 5. Live smoke test — wait for LoadBalancer IP, then `GET /health`
+6. **Conditional:** Rolling restart — `kubectl rollout restart` to pick up the new model — only when `TRAINING_RAN=True`
 
-| Step | Purpose |
-|---|---|
-| Download model artifacts | Get `model.pkl` + `metrics.json` produced by TrainModel stage |
-| Build + push inference image | Build `Dockerfile.infer` with model baked in, push to ACR with commit SHA + `latest` tags |
-| Deploy to AKS | Apply K8s manifests with the new image tag via `KubernetesManifest@1` |
-| Environment gate | `production` environment enforces manual approval before deploy |
-| Live smoke test | Validate the deployed service responds on its external LoadBalancer IP |
+| Step | Condition | Purpose |
+|---|---|---|
+| Download model artifacts | `TRAINING_RAN=True` | Get `metrics.json` for baseline update |
+| Promote model to Blob Storage | `TRAINING_RAN=True` | Copy model from `builds/<buildId>/` to `production/artifacts/` path in Blob |
+| Build + push inference image | Always | Build `Dockerfile.infer`, push to ACR with commit SHA + `latest` tags |
+| Deploy to AKS | Always | Apply K8s manifests with the new image tag via `KubernetesManifest@1` |
+| Environment gate | Always | `production` environment enforces manual approval before deploy |
+| Live smoke test | Always | Validate the deployed service responds on its external LoadBalancer IP |
+| Rolling restart | `TRAINING_RAN=True` | Restart pods to pick up new model from Blob Storage |
                   inputs:
                     containerRegistry: '$(ACR_SERVICE_CONNECTION)'
                     repository: 'bank-marketing-api'
@@ -317,19 +356,40 @@ The retraining pipeline is **not triggered by code pushes**. It handles data-dri
 |---|---|
 | `Retrain` | Download versioned training data from Azure Blob Storage, pull `train-latest` image from ACR (no rebuild), run training, publish model artifacts |
 | `ValidateModel` | Download production baseline metrics from Blob Storage, compare new ROC-AUC — fail if regression > 2 percentage points |
-| `DeployStaging` | Build inference image with retrained model, push to ACR as `retrain-staging-<buildId>`, deploy to `bank-marketing-dev`, in-cluster smoke test |
-| `DeployProduction` | Manual approval gate (`production` environment), build + push inference image as `retrain-<buildId>` + `latest`, deploy to `bank-marketing`, update baseline metrics in Blob Storage |
+| `DeployStaging` | Promote model to `staging/` in Blob Storage, build inference image, push to ACR as `retrain-staging-<buildId>`, deploy to `bank-marketing-dev`, in-cluster smoke test |
+| `DeployProduction` | Manual approval gate (`production` environment), promote model to `production/` in Blob Storage, build + push inference image as `retrain-<buildId>` + `latest`, deploy to `bank-marketing`, update baseline metrics in Blob Storage |
 
-### Branch Toggle Mechanism
+### Branch Toggle & Conditional Training
 
-Both CD stages in Pipeline 2 use the branch name to select which stage runs. The `bank-marketing-vars` variable group provides shared configuration, and `Build.SourceBranchName` determines the deployment target:
+Both CD stages in Pipeline 2 depend on both CI and TrainModel, using a compound condition that handles skipped training:
 
 ```yaml
-condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'dev'))   # CD_Dev
-condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'))  # CD_Main
+# CD stage condition: run if CI passed AND (TrainModel passed OR was skipped)
+condition: |
+  and(
+    eq(variables['Build.SourceBranchName'], 'dev'),
+    in(dependencies.CI.result, 'Succeeded'),
+    in(dependencies.TrainModel.result, 'Succeeded', 'Skipped')
+  )
+
+# Stage-level variable to gate model promotion and rolling restart
+variables:
+  TRAINING_RAN: $[ in(dependencies.TrainModel.result, 'Succeeded') ]
 ```
 
-Only one CD stage executes per pipeline run — they are mutually exclusive. The CI and TrainModel stages always run regardless of branch.
+Only one CD stage executes per pipeline run — they are mutually exclusive by branch. The CI stage always runs; TrainModel is conditional on file changes.
+
+#### `MODEL_BLOB_PREFIX` — Environment-Based Model Path Separation
+
+Pods in different environments load models from different Blob Storage paths using the `MODEL_BLOB_PREFIX` environment variable:
+
+| Environment | `MODEL_BLOB_PREFIX` | Resolved blob path |
+|---|---|---|
+| Staging (`bank-marketing-dev`) | `staging` | `staging/artifacts/model.pkl` |
+| Production (`bank-marketing`) | `production` | `production/artifacts/model.pkl` |
+| Local development | (unset) | `artifacts/model.pkl` (local filesystem) |
+
+The `_resolve_blob_path()` function in `src/storage.py` prepends the prefix to the config-defined model path (`artifacts/model.pkl`) when `STORAGE_BACKEND=azure_blob`.
 
 ---
 
@@ -352,8 +412,14 @@ flowchart LR
         MODEL["model.pkl +\nmetrics.json"]
     end
 
+    subgraph BlobStorage["Azure Blob Storage (Model Registry)"]
+        BLOB_VERSIONED["builds/&lt;buildId&gt;/\nmodel.pkl + metrics.json"]
+        BLOB_STAGING["staging/artifacts/model.pkl"]
+        BLOB_PROD["production/artifacts/model.pkl"]
+    end
+
     subgraph InferBuild["Inference Container Build"]
-        INFER_IMG["Dockerfile.infer\n→ inference image\n(model.pkl COPY'd)"]
+        INFER_IMG["Dockerfile.infer\n→ inference image\n(model loaded from Blob at runtime)"]
     end
 
     subgraph Registry["ACR"]
@@ -372,7 +438,9 @@ flowchart LR
     REQS_TRAIN --> TRAIN_IMG
     TRAIN_IMG --> TRAIN_EXEC
     TRAIN_EXEC --> MODEL
-    MODEL --> INFER_IMG
+    MODEL --> BLOB_VERSIONED
+    BLOB_VERSIONED --> BLOB_STAGING
+    BLOB_VERSIONED --> BLOB_PROD
     CODE --> INFER_IMG
     REQS_INFER --> INFER_IMG
     TRAIN_IMG --> VT
@@ -381,6 +449,8 @@ flowchart LR
     INFER_IMG --> VD
     V1 --> POD_PROD
     VD --> POD_DEV
+    BLOB_PROD --> POD_PROD
+    BLOB_STAGING --> POD_DEV
 ```
 
 ### What goes into the training image
@@ -398,8 +468,9 @@ flowchart LR
 |---|---|
 | `src/` | ML pipeline source + API serving code |
 | `config.yaml` | Runtime configuration |
-| `artifacts/model.pkl` | Trained model artifact (baked in via `COPY` after training stage) |
 | `requirements-infer.txt` | Inference dependencies (fastapi, uvicorn, scikit-learn, pandas, pydantic, numpy, joblib, pyyaml) |
+
+> **Note:** `model.pkl` is **not** baked into the inference image. It is loaded at runtime from Azure Blob Storage (`STORAGE_BACKEND=azure_blob`) in production and staging, or via volume mount for local development.
 
 ### What stays outside the images
 
@@ -425,8 +496,8 @@ All variables are stored in the `bank-marketing-vars` variable group in Azure De
 | `AZURE_SUBSCRIPTION` | Azure subscription service connection | `azure-sub-connection` | P2, P3 |
 | `TRAIN_IMAGE_NAME` | Training image repository name in ACR | `bank-marketing-train` | P2, P3 |
 | `INFER_IMAGE_NAME` | Inference image repository name in ACR | `bank-marketing-api` | P2, P3 |
-| `BLOB_STORAGE_ACCOUNT` | Azure Storage account for training data and baselines | `bankmarketingdata` | P3 |
-| `BLOB_CONTAINER_TRAINING` | Blob container holding versioned training CSVs | `training-data` | P3 |
+| `BLOB_STORAGE_ACCOUNT` | Azure Storage account for training data and model registry | `bankmarketingdata` | P2, P3 |
+| `BLOB_CONTAINER_TRAINING` | Blob container holding versioned training CSVs | `training-data` | P2, P3 |
 
 ---
 
@@ -445,12 +516,14 @@ PR validation is **identical** for both target branches — no conditions, no br
 
 ### Pipeline 2: `azure-pipelines.yml` (Push trigger)
 
-| Trigger | Tests | K8s Validation | TrainModel | Infer Build + Push | Deploy to AKS | Smoke Test |
-|---|---|---|---|---|---|---|
-| Merge → `dev` | Yes | Yes | Yes (push `train-latest`) | Yes (`dev-<buildId>`) | Yes (`bank-marketing-dev`) | In-cluster (`kubectl exec`) |
-| Merge → `main` | Yes | Yes | Yes (push `train-latest`) | Yes (`<buildId>` + `latest`) | Yes (`bank-marketing`) | Live (external IP) |
+| Trigger | Tests | K8s Validation | DetectChanges | TrainModel | Infer Build + Push | Model Promotion (Blob) | Deploy to AKS | Smoke Test | Rolling Restart |
+|---|---|---|---|---|---|---|---|---|---|
+| Merge → `dev` (ML code changed) | Yes | Yes | `NEEDS_TRAIN=true` | Yes | Yes (`dev-<buildId>`) | staging/artifacts/ | Yes (`bank-marketing-dev`) | In-cluster | Yes |
+| Merge → `dev` (API/K8s only) | Yes | Yes | `NEEDS_TRAIN=false` | **Skipped** | Yes (`dev-<buildId>`) | **Skipped** | Yes (`bank-marketing-dev`) | In-cluster | **Skipped** |
+| Merge → `main` (ML code changed) | Yes | Yes | `NEEDS_TRAIN=true` | Yes | Yes (`<buildId>` + `latest`) | production/artifacts/ | Yes (`bank-marketing`) | Live (external IP) | Yes |
+| Merge → `main` (API/K8s only) | Yes | Yes | `NEEDS_TRAIN=false` | **Skipped** | Yes (`<buildId>` + `latest`) | **Skipped** | Yes (`bank-marketing`) | Live (external IP) | **Skipped** |
 
-The CI and TrainModel stages always run on both branches. The only branching logic is the `condition:` on the two mutually exclusive CD stages.
+The CI stage always runs on both branches. TrainModel is conditional on file changes (DetectChanges output). CD stages always run but gate model promotion and rolling restart on `TRAINING_RAN`.
 
 ### Pipeline 3: `retrain.yml` (Scheduled / Manual)
 

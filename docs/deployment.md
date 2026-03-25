@@ -313,7 +313,7 @@ flowchart TD
 The sequence below applies to both namespaces. The only difference is the deployment target and what happens once the pod is ready.
 
 1. **Image pull**: Kubernetes pulls the container image from ACR using the managed identity `AcrPull` role (`--attach-acr`)
-2. **Container start**: Uvicorn starts, FastAPI lifespan handler loads `model.pkl` into memory
+2. **Container start**: Uvicorn starts, FastAPI lifespan handler loads `model.pkl` into memory from Azure Blob Storage (`STORAGE_BACKEND=azure_blob`) or a mounted volume (`STORAGE_BACKEND=local`)
 3. **Readiness probe**: Kubernetes polls `GET /health` — pod only receives traffic once it returns 200
 4. **Live traffic** (`bank-marketing`): Service routes external requests through the Azure Load Balancer
 5. **Smoke test** (`bank-marketing-dev`): The CD pipeline runs `kubectl exec` or `kubectl port-forward` to issue a `POST /predict` request against the internal `ClusterIP` service, confirming the model loads and returns a valid prediction before the change is eligible to merge to `main`

@@ -16,7 +16,7 @@ End-to-end infrastructure and system design for the Bank Marketing MLOps project
 8. [Observability](#observability)
 9. [ML Data Flow](#ml-data-flow)
 10. [Key Design Decisions](#key-design-decisions)
-11. [Production Maturity Path — AKS-Based Training](#production-maturity-path--aks-based-training)
+11. [Future: AKS-Based Training](#future-aks-based-training)
 12. [Key References](#key-references)
 
 ---
@@ -378,27 +378,44 @@ The training image is pushed to ACR as `train-latest` so the retraining pipeline
 
 ### Inference Container (`Dockerfile.infer`)
 
-A **long-lived** FastAPI service with the trained model baked in at build time.
+A **long-lived** FastAPI service that loads the trained model at runtime — the model is **not** baked into the image.
 
 | Layer | Contents |
 |---|---|
 | Base | `python:3.12-slim` + `curl` (health probe tool) |
-| Dependencies | `requirements-infer.txt` (fastapi, uvicorn, scikit-learn, pandas, pydantic, numpy, joblib, pyyaml) |
+| Dependencies | `requirements-infer.txt` (fastapi, uvicorn, scikit-learn, pandas, pydantic, numpy, joblib, pyyaml, azure-storage-blob, azure-identity) |
 | Application | `src/` + `config.yaml` |
-| Model artifact | `artifacts/model.pkl` — `COPY`'d from the CI agent's file system after the training container produces it |
+| Model artifact | Loaded at startup from: (a) mounted volume (`/app/artifacts/model.pkl`) or (b) Azure Blob Storage (`STORAGE_BACKEND=azure_blob`) |
 | Entrypoint | `uvicorn src.api.app:app --host 0.0.0.0 --port 8000` |
+
+#### Model Loading Strategy
+
+The inference container resolves `model.pkl` at startup in this order:
+
+1. `MODEL_PATH` env var (explicit override)
+2. `config.yaml → artifacts.model_path` (default: `artifacts/model.pkl`)
+
+The storage backend determines *where* that path is resolved:
+
+| Environment | `STORAGE_BACKEND` | Model source |
+|---|---|---|
+| Local Docker | `local` (default) | Volume mount: `-v ./artifacts:/app/artifacts:ro` |
+| AKS (production) | `azure_blob` | Azure Blob Storage (managed identity) |
+| AKS (dev) | `local` | `hostPath` volume or PVC |
+
+This decoupling means **retraining does not require an image rebuild** — restart/rollout the pods and the new model is served.
 
 ### CI Artifact Handoff
 
-The CI/CD pipeline orchestrates the handoff between containers:
+The CI/CD pipeline orchestrates the handoff between containers. The inference image is model-agnostic — `model.pkl` is loaded at runtime, not baked in.
 
 ```mermaid
 flowchart LR
     TRAIN_BUILD["Build<br/>Dockerfile.train"] --> TRAIN_RUN["Run training container<br/>(data/ mounted, artifacts/ mounted)"]
-    TRAIN_RUN --> MODEL["model.pkl + metrics.json<br/>on agent file system"]
-    MODEL --> INFER_BUILD["Build<br/>Dockerfile.infer<br/>(COPY artifacts/model.pkl)"]
+    TRAIN_RUN --> MODEL["model.pkl + metrics.json<br/>→ Azure Blob Storage"]
+    MODEL --> INFER_BUILD["Build<br/>Dockerfile.infer<br/>(no model baked in)"]
     INFER_BUILD --> ACR_PUSH["Push inference image<br/>to ACR"]
-    ACR_PUSH --> AKS_DEPLOY["Deploy to AKS"]
+    ACR_PUSH --> AKS_DEPLOY["Deploy to AKS<br/>(model loaded from Blob at startup)"]
 ```
 
 ### Image Tagging Strategy
@@ -407,8 +424,10 @@ flowchart LR
 
 | Tag | When Applied | Purpose |
 |---|---|---|
-| `<buildId>` | Every CI/CD run (Pipeline 2) | Immutable build identifier |
-| `train-latest` | Every CI/CD run (Pipeline 2) | Stable tag pulled by the retraining pipeline |
+| `<buildId>` | Every CI/CD run (Pipeline 2) on `main` | Immutable build identifier |
+| `train-latest` | Every CI/CD run (Pipeline 2) on `main` | Stable tag pulled by the retraining pipeline |
+| `dev-<buildId>` | Every CI/CD run (Pipeline 2) on `dev` | Immutable dev build identifier |
+| `dev-latest` | Every CI/CD run (Pipeline 2) on `dev` | Dev training image tag |
 
 #### Inference Image (`INFER_IMAGE_NAME`)
 
@@ -531,8 +550,8 @@ flowchart TD
         EVAL --> METRICS["artifacts/metrics.json"]
     end
 
-    subgraph CI["CI Agent — Artifact Handoff"]
-        ARTIFACT -.->|"COPY into Dockerfile.infer"| BAKE["model.pkl baked<br/>into inference image"]
+    subgraph ArtifactStore["Artifact Storage"]
+        ARTIFACT -.->|"uploaded to Blob<br/>or mounted volume"| STORE["model.pkl in<br/>Azure Blob / local volume"]
     end
 
     subgraph Serving["Inference Container (Dockerfile.infer — long-lived)"]
@@ -541,7 +560,7 @@ flowchart TD
         PREDICT --> RESP["JSON Response"]
     end
 
-    BAKE -.->|"deployed to AKS"| PREDICT
+    STORE -.->|"loaded at startup<br/>(Blob or volume mount)"| PREDICT
 ```
 
 ### Training Flow (Offline)
@@ -591,75 +610,19 @@ flowchart TD
 | FastAPI over Flask | Async-capable, built-in Pydantic validation, auto-generated OpenAPI docs |
 | `/health` endpoint | Required for Kubernetes liveness/readiness probes |
 | Logistic Regression as default | Interpretable, fast to train, better minority-class F1 than gradient boosting for this dataset |
-| Dual-container architecture (train + infer) | Training container runs to completion and produces artifacts; inference container bakes in the model for a self-contained deployable unit. Follows [MLOps v2](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/machine-learning-operations-v2) inner loop / outer loop separation. |
-| Model baked into inference Docker image | Self-contained deployable unit — no external model store required for this project's scope |
-| Training runs on CI agent (not AKS) | At current scale (< 10 MB dataset, seconds to train, no GPU), running training as a `docker run` on the CI agent is simpler and free. AKS-based training via Kubernetes Jobs is documented as a production maturity enhancement — see [future-enhancements.md § AKS-Based Model Training](future-enhancements.md#aks-based-model-training-kubernetes-job). Prerequisites: production monitoring, security scanning, API auth, and Blob Storage model registry must be in place first. |
+| Dual-container architecture (train + infer) | Training container runs to completion and produces artifacts; inference container loads the model at runtime from a mounted volume (local) or Azure Blob Storage (AKS). Follows [MLOps v2](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/machine-learning-operations-v2) inner loop / outer loop separation. |
+| Model loaded at runtime (not baked in) | Decouples model lifecycle from image lifecycle — retraining only requires a pod restart, not an image rebuild. Supports both local volume mounts and Azure Blob Storage via `STORAGE_BACKEND` env var. |
+| Training runs on CI agent (not AKS) | At current scale (< 10 MB dataset, seconds to train, no GPU), running training as a `docker run` on the CI agent is simpler and free. The training image is pushed to ACR for reuse by the retraining pipeline. Model artifacts can be uploaded to Azure Blob Storage via existing `STORAGE_BACKEND` env vars. AKS-based training via Kubernetes Jobs is a potential future enhancement — see [future-enhancements.md § AKS-Based Model Training](future-enhancements.md#aks-based-model-training-kubernetes-job). |
 
 ---
 
-## Production Maturity Path — AKS-Based Training
+## Future: AKS-Based Training
 
-The current architecture trains models on the CI agent and bakes `model.pkl` into the inference Docker image. This is the right starting point — simple, self-contained, and free of additional infrastructure. As the system matures, training can migrate to the AKS cluster itself, running as a Kubernetes Job with Blob Storage as the artifact layer.
+Model training runs on the CI agent as a `docker run` step — the right choice at current scale. The training image is pushed to ACR for reuse by the retraining pipeline, and model artifacts can be uploaded to Azure Blob Storage via the existing `STORAGE_BACKEND` env vars.
 
-This evolution is positioned **after** governance, monitoring, security, and operational readiness are in place — it builds on those foundations rather than replacing them.
+If training workloads eventually outgrow the CI agent (GPU requirements, long-running jobs, or decoupled scheduling), training can migrate to AKS as a Kubernetes Job. This is documented as a future enhancement.
 
-### Current vs Target Architecture
-
-```mermaid
-flowchart LR
-    subgraph CURRENT["Current: CI Agent Training"]
-        direction TB
-        C_PIPE["CI/CD Pipeline"] -->|"docker run"| C_TRAIN["Training Container<br/>(on CI agent)"]
-        C_TRAIN -->|"model.pkl on<br/>agent file system"| C_BUILD["Build Dockerfile.infer<br/>(COPY model.pkl)"]
-        C_BUILD -->|"push to ACR"| C_ACR["ACR"]
-        C_ACR -->|"deploy"| C_AKS["AKS Inference Pods<br/>(model baked in image)"]
-    end
-
-    subgraph TARGET["Target: AKS Job Training"]
-        direction TB
-        T_PIPE["CI/CD Pipeline"] -->|"kubectl apply"| T_JOB["K8s Job on AKS<br/>(training namespace)"]
-        T_JOB -->|"model.pkl + metrics"| T_BLOB["Azure Blob Storage<br/>(versioned artifacts)"]
-        T_BLOB -->|"model version<br/>in manifest"| T_REG["Model Registry<br/>(registry-manifest.json)"]
-        T_REG -->|"rollout restart"| T_AKS["AKS Inference Pods<br/>(load model from Blob)"]
-    end
-```
-
-### Key Differences
-
-| Aspect | Current | Target (AKS Job) |
-|---|---|---|
-| Training compute | CI agent (shared, no GPU) | AKS node pool (dedicated, GPU-capable) |
-| Artifact flow | Agent file system → `COPY` into image | Blob Storage → runtime model loading |
-| Model/image coupling | Tightly coupled (model baked in) | Decoupled (model loaded at startup) |
-| Model versioning | Implicit (Git SHA + image tag) | Explicit (versioned Blob + manifest) |
-| Inference update | Full image rebuild + rolling update | `kubectl rollout restart` (no rebuild) |
-
-### Adoption Sequence
-
-The path from the current architecture to AKS-based training follows the project's maturity phases:
-
-```
-Phase 1: Security & Observability (current focus)
-    └─ API auth, security scanning, telemetry, alerting
-
-Phase 2: Governance & Quality
-    └─ Data validation, SLOs, RBAC, network policies, runbook
-
-Phase 3: MLOps Maturity
-    └─ Blob Storage model registry (I16), Fairlearn (I17), drift monitoring (I18)
-
-Phase 4: Production Training (this enhancement)
-    └─ AKS training Job, runtime model loading, manifest-based promotion
-```
-
-AKS-based training is a Phase 4 capability. It requires Phases 1–3 to be complete because:
-
-- Training Jobs need to be **monitored** (Phase 1 — telemetry, alerting)
-- Training images need to be **scanned** (Phase 1 — Trivy, pip-audit)
-- The training namespace needs **RBAC and network isolation** (Phase 2)
-- Artifacts must already flow through **versioned Blob Storage** (Phase 3 — I16)
-
-> Full design, manifest examples, CI/CD integration, and adoption criteria are documented in [future-enhancements.md § AKS-Based Model Training](future-enhancements.md#aks-based-model-training-kubernetes-job).
+> See [future-enhancements.md § AKS-Based Model Training](future-enhancements.md#aks-based-model-training-kubernetes-job) for the full design, manifest examples, and adoption criteria.
 
 ---
 
@@ -684,10 +647,3 @@ AKS-based training is a Phase 4 capability. It requires Phases 1–3 to be compl
 - **[25]** Microsoft. [Build GitHub repositories](https://learn.microsoft.com/en-us/azure/devops/pipelines/repos/github?view=azure-devops&tabs=yaml). Comprehensive reference for connecting GitHub repos to Azure Pipelines — covers service connections, webhook installation, and `pr:` / `trigger:` YAML syntax.
 - **[12]** Microsoft. [Build a CI/CD pipeline for microservices on Kubernetes](https://learn.microsoft.com/en-us/azure/architecture/microservices/ci-cd-kubernetes). Architecture guide covering deployment, environment isolation, and the validation builds pattern that informed the two-pipeline design.
 - **[17]** Microsoft. [Online Endpoints — Managed vs Kubernetes Online Endpoints](https://learn.microsoft.com/en-us/azure/machine-learning/concept-endpoints-online?view=azureml-api-2#managed-online-endpoints-vs-kubernetes-online-endpoints). Reference for the decision to use direct AKS deployment over AzureML managed online endpoints.
-
-### AKS-Based Training (Future)
-
-- **[74]** Kubernetes. [Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/). Kubernetes Job controller — the execution model for AKS-based training.
-- **[75]** Microsoft. [Kubernetes workload management on AKS](https://learn.microsoft.com/en-us/azure/aks/concepts-clusters-workloads#jobs-and-cron-jobs). AKS-specific Jobs/CronJobs guidance for batch training workloads.
-- **[76]** Microsoft. [Use GPUs for compute-intensive workloads on AKS](https://learn.microsoft.com/en-us/azure/aks/gpu-cluster). GPU node pool provisioning — prerequisite for GPU-accelerated training.
-- **[77]** Microsoft. [Azure Blob Storage documentation](https://learn.microsoft.com/en-us/azure/storage/blobs/). Artifact store for training data, model output, and the registry manifest.

@@ -15,8 +15,11 @@ RUN pip install --no-cache-dir -r requirements-infer.txt
 COPY src/ src/
 COPY config.yaml .
 
-# model.pkl is produced by the training container and copied in during CI build
-COPY artifacts/model.pkl artifacts/model.pkl
+# Create the artifacts directory — model.pkl is NOT baked into the image.
+# It is either:
+#   1. Mounted as a volume (local dev: -v ./artifacts:/app/artifacts)
+#   2. Loaded from Azure Blob Storage (set STORAGE_BACKEND=azure_blob)
+RUN mkdir -p artifacts && chown appuser:appuser artifacts
 
 USER appuser
 

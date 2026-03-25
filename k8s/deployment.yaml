@@ -47,5 +47,21 @@ spec:
                 secretKeyRef:
                   name: bank-marketing-api-key
                   key: API_KEY
+            # Load model artifact from Azure Blob Storage (no baked model)
+            - name: STORAGE_BACKEND
+              value: "azure_blob"
+            - name: AZURE_STORAGE_ACCOUNT_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: azure-storage
+                  key: ACCOUNT_NAME
+            - name: AZURE_STORAGE_CONTAINER
+              valueFrom:
+                secretKeyRef:
+                  name: azure-storage
+                  key: CONTAINER_NAME
+            # Production uses production/ model path; staging uses staging/
+            - name: MODEL_BLOB_PREFIX
+              value: "production"
       imagePullSecrets:
         - name: acr-secret

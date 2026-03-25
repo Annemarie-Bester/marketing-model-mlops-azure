@@ -382,7 +382,9 @@ client.transition_model_version_stage("bank-marketing-pipeline", new_version, "P
 
 ### Context
 
-The current architecture runs model training as a **Docker container on the CI agent** (Azure DevOps Microsoft-hosted agent). The training container executes `python main.py train`, writes `model.pkl` + `metrics.json` to the agent's file system, and the CI pipeline hands the artifacts to the inference image build step. This works — and for the project's current scale (single model, small dataset, weekly retraining), it is the right choice.
+The current architecture runs model training as a **Docker container on the CI agent** (Azure DevOps Microsoft-hosted agent). The training container (`Dockerfile.train`) executes `python main.py train`, writes `model.pkl` + `metrics.json` to the agent's file system (or uploads to Azure Blob Storage via the existing `STORAGE_BACKEND` env vars), and the CI pipeline hands the artifacts to the inference image build step. The training image is also pushed to ACR for reuse by the retraining pipeline.
+
+This is the right choice for the project's current scale — single model, small dataset (< 10 MB), training completes in seconds, and no GPU is required. A separate Kubernetes deployment for training adds operational complexity disproportionate to the benefit at this stage.
 
 AKS-based training becomes the right upgrade when training workloads outgrow the CI agent's constraints — specifically when training requires GPU access, takes longer than the pipeline timeout allows, or needs to be decoupled from the CI/CD agent lifecycle entirely.
 
