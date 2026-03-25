@@ -31,7 +31,8 @@
         "ms-python.vscode-pylance",
         "ms-toolsai.jupyter",
         "ms-azuretools.vscode-docker",
-        "redhat.vscode-yaml"
+        "redhat.vscode-yaml",
+        "bierner.markdown-mermaid"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/usr/local/bin/python",

@@ -75,7 +75,9 @@ flowchart LR
     BLOB -->|"model loaded at startup"| POD_PROD
     BLOB -->|"model loaded at startup"| POD_DEV
     POD_PROD -->|"metrics + logs"| MON
+    POD_DEV -->|"metrics + logs"| MON
     POD_PROD -->|"traces + errors"| AI
+    POD_DEV -->|"traces + errors"| AI
 ```
 
 ### Component Summary
@@ -485,7 +487,11 @@ flowchart TD
 
 ### API Endpoints
 
-| Method | Path | Purpose | Auth | Used By |\n|---|---|---|---|---|\n| `POST` | `/predict` | Score a single customer record | `X-API-Key` header (skipped if `API_KEY` env var unset) | Upstream services, batch callers |\n| `GET` | `/health` | Liveness/readiness probe | None | Kubernetes, CI smoke tests |\n| `GET` | `/docs` | Auto-generated OpenAPI documentation | None | Developers (FastAPI built-in) |
+| Method | Path | Purpose | Auth | Used By |
+|---|---|---|---|---|
+| `POST` | `/predict` | Score a single customer record | `X-API-Key` header (skipped if `API_KEY` env var unset) | Upstream services, batch callers |
+| `GET` | `/health` | Liveness/readiness probe | None | Kubernetes, CI smoke tests |
+| `GET` | `/docs` | Auto-generated OpenAPI documentation | None | Developers (FastAPI built-in) |
 
 > See [docs/deployment.md](deployment.md) for full Kubernetes manifest YAML and the container lifecycle.
 
@@ -493,13 +499,73 @@ flowchart TD
 
 ## Observability
 
+```mermaid
+flowchart TD
+    subgraph Azure["Azure Subscription — rg-bank-marketing"]
+        subgraph CI_CD["Azure DevOps Pipelines"]
+            P2["CI/CD Pipeline<br/>(azure-pipelines.yml)"]
+            P3["Retrain Pipeline<br/>(retrain.yml)"]
+        end
+
+        ACR["Azure Container Registry<br/>bankmarketingacr · Basic SKU"]
+
+        subgraph Storage["Azure Blob Storage — bankmarketingdata"]
+            TRAIN_DATA["training-data<br/>latest/ + date-versioned CSVs"]
+            MODEL_REG["model-registry<br/>builds/ · staging/ · production/"]
+        end
+
+        subgraph AKS["AKS Cluster — bank-marketing-aks<br/>2× Standard_B2s"]
+            subgraph NS_PROD["bank-marketing (production)"]
+                DEP_P["Deployment: 2 replicas<br/>FastAPI + model.pkl from Blob"]
+                SVC_P["Service: LoadBalancer<br/>Port 80 → 8000"]
+            end
+            subgraph NS_DEV["bank-marketing-dev (staging)"]
+                DEP_D["Deployment: 1 replica<br/>FastAPI + model.pkl from Blob"]
+                SVC_D["Service: ClusterIP<br/>Port 8000 (internal)"]
+            end
+        end
+
+        subgraph Observability["Observability"]
+            MON["Azure Monitor<br/>(AKS monitoring addon)"]
+            LAW["Log Analytics Workspace<br/>Container Insights"]
+            AI["Application Insights<br/>bank-marketing-insights"]
+        end
+    end
+
+    GH["GitHub Repository<br/>dev + main branches"]
+    CLIENT["Client / Upstream Service"]
+    LB["Azure Load Balancer<br/>External IP"]
+
+    %% CI/CD flows
+    GH -->|"push webhook"| P2
+    P2 -->|"docker push<br/>(train + infer images)"| ACR
+    P2 -->|"model.pkl + metrics.json"| MODEL_REG
+    P3 -->|"pull train-latest"| ACR
+    P3 -->|"retrained model"| MODEL_REG
+    TRAIN_DATA -->|"training CSV"| P3
+
+    %% Runtime flows
+    ACR -->|"image pull<br/>(AcrPull managed identity)"| AKS
+    MODEL_REG -->|"production/artifacts/<br/>model.pkl at startup"| DEP_P
+    MODEL_REG -->|"staging/artifacts/<br/>model.pkl at startup"| DEP_D
+    DEP_P --> SVC_P --> LB
+    CLIENT -->|"POST /predict<br/>(X-API-Key header)"| LB
+
+    %% Observability flows
+    AKS -->|"pod CPU/memory<br/>node health<br/>container logs"| MON
+    MON -->|"metrics + logs<br/>query + alerting"| LAW
+    DEP_P -->|"request traces<br/>error rates<br/>latency · prediction dist."| AI
+    DEP_D -->|"request traces<br/>(staging telemetry)"| AI
+    LAW -.->|"correlated diagnostics"| AI
+```
+
 ### Azure Monitor (AKS Addon)
 
 Enabled via `az aks enable-addons --addons monitoring`. Provides:
 
 - Pod-level CPU and memory utilisation
 - Node health and cluster-level metrics
-- Container log aggregation
+- Container log aggregation via Log Analytics Workspace
 - Alerting rules for resource thresholds
 
 ### Application Insights
@@ -510,6 +576,17 @@ Provisioned as a standalone resource (`bank-marketing-insights`). Provides:
 - Error rates and HTTP status code distribution
 - Prediction distribution drift (logged per-request)
 - End-to-end transaction traces
+
+### Telemetry Flow Summary
+
+| Signal | Source | Destination | Purpose |
+|---|---|---|---|
+| Pod CPU / memory | AKS kubelet | Azure Monitor → Log Analytics | Resource utilisation, scaling triggers |
+| Container stdout/stderr | AKS pods | Azure Monitor → Log Analytics | Log aggregation, error diagnosis |
+| Node health | AKS node pool | Azure Monitor | Cluster-level alerts |
+| HTTP request traces | FastAPI (both namespaces) | Application Insights | Latency, throughput, error rates |
+| Prediction distribution | `/predict` endpoint | Application Insights (custom events) | Drift detection over time |
+| Correlated diagnostics | Log Analytics ↔ App Insights | Azure Portal | Cross-resource troubleshooting |
 
 ---
 

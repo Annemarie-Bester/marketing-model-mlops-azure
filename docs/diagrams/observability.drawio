@@ -1,0 +1,162 @@
+<mxfile host="app.diagrams.net" modified="2026-03-25T00:00:00.000Z" agent="" version="24.0.0" type="device">
+  <diagram id="observability" name="Observability">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ==================== EXTERNAL NODES ==================== -->
+        <mxCell id="gh" value="&lt;b&gt;GitHub Repository&lt;/b&gt;&lt;br&gt;dev + main branches" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="20" y="80" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="client" value="&lt;b&gt;Client / Upstream Service&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="20" y="700" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="lb" value="&lt;b&gt;Azure Load Balancer&lt;/b&gt;&lt;br&gt;External IP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="20" y="560" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== AZURE SUBSCRIPTION CONTAINER ==================== -->
+        <mxCell id="c_azure" value="&lt;b&gt;Azure Subscription — rg-bank-marketing&lt;/b&gt;" style="swimlane;startSize=30;container=1;fillColor=#f5f5f5;strokeColor=#666666;rounded=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="280" y="20" width="1380" height="1050" as="geometry" />
+        </mxCell>
+
+        <!-- CI/CD Container -->
+        <mxCell id="c_cicd" value="&lt;b&gt;Azure DevOps Pipelines&lt;/b&gt;" style="swimlane;startSize=25;container=1;fillColor=#d5e8d4;strokeColor=#82b366;rounded=1;" vertex="1" parent="c_azure">
+          <mxGeometry x="30" y="50" width="400" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="p2" value="&lt;b&gt;CI/CD Pipeline&lt;/b&gt;&lt;br&gt;(azure-pipelines.yml)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="c_cicd">
+          <mxGeometry x="15" y="35" width="170" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p3" value="&lt;b&gt;Retrain Pipeline&lt;/b&gt;&lt;br&gt;(retrain.yml)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="c_cicd">
+          <mxGeometry x="210" y="35" width="170" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ACR -->
+        <mxCell id="acr" value="&lt;b&gt;Azure Container Registry&lt;/b&gt;&lt;br&gt;bankmarketingacr · Basic SKU" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="c_azure">
+          <mxGeometry x="500" y="70" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="icon_obs_acr" value="" style="shape=mxgraph.azure.container_registries;aspect=fixed;" vertex="1" parent="acr">
+          <mxGeometry x="208" y="4" width="24" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Storage Container -->
+        <mxCell id="c_storage" value="&lt;b&gt;Azure Blob Storage — bankmarketingdata&lt;/b&gt;" style="swimlane;startSize=25;container=1;fillColor=#fff2cc;strokeColor=#d6b656;rounded=1;" vertex="1" parent="c_azure">
+          <mxGeometry x="30" y="220" width="400" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="train_data" value="&lt;b&gt;training-data&lt;/b&gt;&lt;br&gt;latest/ + date-versioned CSVs" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="c_storage">
+          <mxGeometry x="15" y="35" width="170" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="model_reg" value="&lt;b&gt;model-registry&lt;/b&gt;&lt;br&gt;builds/ · staging/ · production/" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="c_storage">
+          <mxGeometry x="210" y="35" width="170" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- AKS Cluster Container -->
+        <mxCell id="c_aks" value="&lt;b&gt;AKS Cluster — bank-marketing-aks&lt;/b&gt;&lt;br&gt;2× Standard_B2s" style="swimlane;startSize=35;container=1;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;fontSize=11;" vertex="1" parent="c_azure">
+          <mxGeometry x="500" y="190" width="560" height="370" as="geometry" />
+        </mxCell>
+        <mxCell id="icon_obs_aks" value="" style="shape=mxgraph.azure.kubernetes_services;aspect=fixed;" vertex="1" parent="c_aks">
+          <mxGeometry x="528" y="4" width="24" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Production namespace -->
+        <mxCell id="c_ns_prod" value="&lt;b&gt;bank-marketing (production)&lt;/b&gt;" style="swimlane;startSize=25;container=1;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;" vertex="1" parent="c_aks">
+          <mxGeometry x="20" y="50" width="250" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="dep_p" value="&lt;b&gt;Deployment: 2 replicas&lt;/b&gt;&lt;br&gt;FastAPI + model.pkl from Blob" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="c_ns_prod">
+          <mxGeometry x="15" y="40" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_p" value="&lt;b&gt;Service: LoadBalancer&lt;/b&gt;&lt;br&gt;Port 80 → 8000" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="c_ns_prod">
+          <mxGeometry x="15" y="140" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dep_p_svc_p" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="dep_p" target="svc_p" parent="c_ns_prod">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Dev namespace -->
+        <mxCell id="c_ns_dev" value="&lt;b&gt;bank-marketing-dev (staging)&lt;/b&gt;" style="swimlane;startSize=25;container=1;fillColor=#d5e8d4;strokeColor=#82b366;rounded=1;" vertex="1" parent="c_aks">
+          <mxGeometry x="290" y="50" width="250" height="290" as="geometry" />
+        </mxCell>
+        <mxCell id="dep_d" value="&lt;b&gt;Deployment: 1 replica&lt;/b&gt;&lt;br&gt;FastAPI + model.pkl from Blob" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="c_ns_dev">
+          <mxGeometry x="15" y="40" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_d" value="&lt;b&gt;Service: ClusterIP&lt;/b&gt;&lt;br&gt;Port 8000 (internal)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="c_ns_dev">
+          <mxGeometry x="15" y="140" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dep_d_svc_d" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="dep_d" target="svc_d" parent="c_ns_dev">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Observability Container -->
+        <mxCell id="c_obs" value="&lt;b&gt;Observability&lt;/b&gt;" style="swimlane;startSize=25;container=1;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="c_azure">
+          <mxGeometry x="30" y="630" width="1030" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="monitor" value="&lt;b&gt;Azure Monitor&lt;/b&gt;&lt;br&gt;(AKS monitoring addon)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="c_obs">
+          <mxGeometry x="20" y="35" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="law" value="&lt;b&gt;Log Analytics Workspace&lt;/b&gt;&lt;br&gt;Container Insights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="c_obs">
+          <mxGeometry x="340" y="35" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="appins" value="&lt;b&gt;Application Insights&lt;/b&gt;&lt;br&gt;bank-marketing-insights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="c_obs">
+          <mxGeometry x="690" y="35" width="300" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== EDGES ==================== -->
+
+        <!-- CI/CD flows -->
+        <mxCell id="e_gh_p2" value="push webhook" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=10;" edge="1" source="gh" target="p2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p2_acr" value="docker push&lt;br&gt;(train + infer images)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="p2" target="acr" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p2_modelreg" value="model.pkl + metrics.json" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="p2" target="model_reg" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p3_acr" value="pull train-latest" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="p3" target="acr" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_p3_modelreg" value="retrained model" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="p3" target="model_reg" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_traindata_p3" value="training CSV" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="train_data" target="p3" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Runtime flows -->
+        <mxCell id="e_acr_aks" value="image pull&lt;br&gt;(AcrPull managed identity)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="acr" target="c_aks" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_modelreg_dep_p" value="production/artifacts/&lt;br&gt;model.pkl at startup" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="model_reg" target="dep_p" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_modelreg_dep_d" value="staging/artifacts/&lt;br&gt;model.pkl at startup" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="model_reg" target="dep_d" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_svc_p_lb" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="svc_p" target="lb" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_client_lb" value="POST /predict&lt;br&gt;(X-API-Key header)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="client" target="lb" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Observability flows -->
+        <mxCell id="e_aks_mon" value="pod CPU/memory&lt;br&gt;node health&lt;br&gt;container logs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="c_aks" target="monitor" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mon_law" value="metrics + logs&lt;br&gt;query + alerting" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="monitor" target="law" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dep_p_ai" value="request traces&lt;br&gt;error rates&lt;br&gt;latency · prediction dist." style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="dep_p" target="appins" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dep_d_ai" value="request traces&lt;br&gt;(staging telemetry)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;fontSize=9;" edge="1" source="dep_d" target="appins" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_law_ai" value="correlated diagnostics" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;fontSize=9;" edge="1" source="law" target="appins" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

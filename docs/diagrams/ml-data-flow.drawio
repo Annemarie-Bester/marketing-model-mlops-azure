@@ -1,0 +1,110 @@
+<mxfile host="app.diagrams.net" modified="2026-03-25T00:00:00.000Z" agent="" version="24.0.0" type="device">
+  <diagram id="ml-data-flow" name="ML Data Flow">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Container: Training -->
+        <mxCell id="c_training" value="&lt;b&gt;Training Container&lt;/b&gt; (Dockerfile.train — run-to-completion)" style="swimlane;startSize=30;container=1;fillColor=#d5e8d4;strokeColor=#82b366;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="1200" height="260" as="geometry" />
+        </mxCell>
+
+        <!-- Training nodes -->
+        <mxCell id="raw" value="&lt;b&gt;Raw CSV Data&lt;/b&gt;&lt;br&gt;(mounted /app/data)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="c_training">
+          <mxGeometry x="20" y="60" width="140" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="clean" value="&lt;b&gt;clean_data()&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="c_training">
+          <mxGeometry x="200" y="75" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="split" value="&lt;b&gt;train/test split&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="c_training">
+          <mxGeometry x="360" y="75" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="preproc" value="&lt;b&gt;build_preprocessor()&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="c_training">
+          <mxGeometry x="520" y="75" width="150" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="train" value="&lt;b&gt;train()&lt;/b&gt;&lt;br&gt;fit Pipeline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="c_training">
+          <mxGeometry x="710" y="75" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="artifact" value="&lt;b&gt;artifacts/model.pkl&lt;/b&gt;&lt;br&gt;(mounted /app/artifacts)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="c_training">
+          <mxGeometry x="880" y="50" width="150" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="eval" value="&lt;b&gt;evaluate()&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="c_training">
+          <mxGeometry x="880" y="160" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="metrics" value="&lt;b&gt;artifacts/metrics.json&lt;/b&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="c_training">
+          <mxGeometry x="1040" y="150" width="140" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Training edges -->
+        <mxCell id="e_raw_clean" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="raw" target="clean" parent="c_training">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_clean_split" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="clean" target="split" parent="c_training">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_split_preproc" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="split" target="preproc" parent="c_training">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_preproc_train" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="preproc" target="train" parent="c_training">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_train_artifact" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="train" target="artifact" parent="c_training">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_train_eval" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="train" target="eval" parent="c_training">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_eval_metrics" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="eval" target="metrics" parent="c_training">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Container: Artifact Storage -->
+        <mxCell id="c_artifact_store" value="&lt;b&gt;Artifact Storage&lt;/b&gt;" style="swimlane;startSize=30;container=1;fillColor=#fff2cc;strokeColor=#d6b656;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="440" y="350" width="400" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="store" value="&lt;b&gt;model.pkl&lt;/b&gt;&lt;br&gt;in Azure Blob / local volume" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="c_artifact_store">
+          <mxGeometry x="100" y="35" width="200" height="75" as="geometry" />
+        </mxCell>
+
+        <!-- Container: Serving -->
+        <mxCell id="c_serving" value="&lt;b&gt;Inference Container&lt;/b&gt; (Dockerfile.infer — long-lived)" style="swimlane;startSize=30;container=1;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="140" y="540" width="1000" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Serving nodes -->
+        <mxCell id="req" value="&lt;b&gt;POST /predict&lt;/b&gt;&lt;br&gt;JSON" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="c_serving">
+          <mxGeometry x="30" y="50" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="clean2" value="&lt;b&gt;clean_data()&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="c_serving">
+          <mxGeometry x="250" y="55" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="predict" value="&lt;b&gt;pipeline.predict()&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="c_serving">
+          <mxGeometry x="480" y="55" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="resp" value="&lt;b&gt;JSON Response&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="c_serving">
+          <mxGeometry x="730" y="50" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Serving edges -->
+        <mxCell id="e_req_clean2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="req" target="clean2" parent="c_serving">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_clean2_predict" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="clean2" target="predict" parent="c_serving">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_predict_resp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="predict" target="resp" parent="c_serving">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Cross-container edges (dashed) -->
+        <mxCell id="e_artifact_store" value="uploaded to Blob&lt;br&gt;or mounted volume" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;fontSize=10;" edge="1" source="artifact" target="store" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_store_predict" value="loaded at startup&lt;br&gt;(Blob or volume mount)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;fontSize=10;" edge="1" source="store" target="predict" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

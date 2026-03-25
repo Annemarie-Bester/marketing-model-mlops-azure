@@ -1,0 +1,57 @@
+<mxfile host="app.diagrams.net" modified="2026-03-25T00:00:00.000Z" agent="" version="24.0.0" type="device">
+  <diagram id="ci-artifact-handoff" name="CI Artifact Handoff">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Node: Build Dockerfile.train -->
+        <mxCell id="train_build" value="&lt;b&gt;Build&lt;/b&gt;&lt;br&gt;Dockerfile.train" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="40" y="150" width="180" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Node: Run training container -->
+        <mxCell id="train_run" value="&lt;b&gt;Run training container&lt;/b&gt;&lt;br&gt;(data/ mounted, artifacts/ mounted)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="280" y="150" width="200" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Node: model.pkl + metrics.json → Azure Blob Storage -->
+        <mxCell id="model" value="&lt;b&gt;model.pkl + metrics.json&lt;/b&gt;&lt;br&gt;→ Azure Blob Storage" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="540" y="135" width="200" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Node: Build Dockerfile.infer -->
+        <mxCell id="infer_build" value="&lt;b&gt;Build&lt;/b&gt;&lt;br&gt;Dockerfile.infer&lt;br&gt;(no model baked in)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="800" y="150" width="180" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Node: Push inference image to ACR -->
+        <mxCell id="acr_push" value="&lt;b&gt;Push inference image&lt;/b&gt;&lt;br&gt;to ACR" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="150" width="180" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Node: Deploy to AKS -->
+        <mxCell id="aks_deploy" value="&lt;b&gt;Deploy to AKS&lt;/b&gt;&lt;br&gt;(model loaded from Blob at startup)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="150" width="200" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Edges -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="train_build" target="train_run" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="train_run" target="model" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="model" target="infer_build" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="infer_build" target="acr_push" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="acr_push" target="aks_deploy" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -26,12 +26,7 @@ flowchart TD
     PR_EVENT["PR opened / updated"] --> PR
 ```
 
-<table>
-<tr>
-<th>Pipeline 2 — Merge → <code>dev</code> (staging deployment)</th>
-<th>Pipeline 2 — Merge → <code>main</code> (production deployment)</th>
-</tr>
-<tr><td>
+#### Pipeline 2 — Merge → `dev` (staging deployment)
 
 ```mermaid
 flowchart TD
@@ -72,7 +67,9 @@ flowchart TD
     D_DETECT -.->|NEEDS_TRAIN| TRAIN_DEV
 ```
 
-</td><td>
+**Differs:** Inference image pushed as `dev-<buildId>` + `dev-latest`. Real deployment to `bank-marketing-dev` namespace — in-cluster smoke test, no external traffic.
+
+#### Pipeline 2 — Merge → `main` (production deployment)
 
 ```mermaid
 flowchart TD
@@ -113,12 +110,7 @@ flowchart TD
     M_DETECT -.->|NEEDS_TRAIN| TRAIN_MAIN
 ```
 
-</td></tr>
-<tr>
-<td><strong>Differs:</strong> Inference image pushed as <code>dev-&lt;buildId&gt;</code> + <code>dev-latest</code>. Real deployment to <code>bank-marketing-dev</code> namespace — in-cluster smoke test, no external traffic.</td>
-<td><strong>Differs:</strong> Inference image pushed as <code>&lt;buildId&gt;</code> + <code>latest</code>. Real deployment to AKS + live smoke test against external endpoint.</td>
-</tr>
-</table>
+**Differs:** Inference image pushed as `<buildId>` + `latest`. Real deployment to AKS + live smoke test against external endpoint.
 
 ```mermaid
 flowchart TD
@@ -383,10 +375,11 @@ flowchart LR
         MODEL["model.pkl +\nmetrics.json"]
     end
 
-    subgraph BlobStorage["Azure Blob Storage (Model Registry)"]
-        BLOB_VERSIONED["builds/&lt;buildId&gt;/\nmodel.pkl + metrics.json"]
-        BLOB_STAGING["staging/artifacts/model.pkl"]
-        BLOB_PROD["production/artifacts/model.pkl"]
+    subgraph BlobStorage["Azure Blob Storage"]
+        TRAIN_DATA["training-data/\nlatest/bank_marketing_data.csv"]
+        BLOB_VERSIONED["model-registry/builds/buildId/\nmodel.pkl + metrics.json"]
+        BLOB_STAGING["model-registry/staging/\nartifacts/model.pkl"]
+        BLOB_PROD["model-registry/production/\nartifacts/model.pkl + metrics.json"]
     end
 
     subgraph InferBuild["Inference Container Build"]
@@ -394,10 +387,9 @@ flowchart LR
     end
 
     subgraph Registry["ACR"]
-        VT["train-latest"]
-        V1["infer:&lt;buildId&gt;"]
-        VL["infer:latest"]
-        VD["infer:dev-&lt;buildId&gt;"]
+        VT["train:buildId\n+ train-latest"]
+        V1["infer:buildId\n+ latest"]
+        VD["infer:dev-buildId\n+ dev-latest"]
     end
 
     subgraph Runtime["AKS"]
@@ -408,20 +400,20 @@ flowchart LR
     CODE --> TRAIN_IMG
     REQS_TRAIN --> TRAIN_IMG
     TRAIN_IMG --> TRAIN_EXEC
+    TRAIN_DATA -->|"downloaded\nbefore training"| TRAIN_EXEC
     TRAIN_EXEC --> MODEL
     MODEL --> BLOB_VERSIONED
-    BLOB_VERSIONED --> BLOB_STAGING
-    BLOB_VERSIONED --> BLOB_PROD
+    BLOB_VERSIONED -->|"CD_Dev promotes"| BLOB_STAGING
+    BLOB_VERSIONED -->|"CD_Main promotes"| BLOB_PROD
     CODE --> INFER_IMG
     REQS_INFER --> INFER_IMG
     TRAIN_IMG --> VT
-    INFER_IMG --> V1
-    INFER_IMG --> VL
-    INFER_IMG --> VD
+    INFER_IMG -->|"main merge"| V1
+    INFER_IMG -->|"dev merge"| VD
     V1 --> POD_PROD
     VD --> POD_DEV
-    BLOB_PROD --> POD_PROD
-    BLOB_STAGING --> POD_DEV
+    BLOB_PROD -->|"MODEL_BLOB_PREFIX=production"| POD_PROD
+    BLOB_STAGING -->|"MODEL_BLOB_PREFIX=staging"| POD_DEV
 ```
 
 ### What goes into the training image
