@@ -1,0 +1,94 @@
+<mxfile host="65bd71144e">
+    <diagram id="k8s-cluster-layout" name="Page-1">
+        <mxGraphModel dx="1050" dy="1390" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="acr" value="&lt;span&gt;ACR&lt;/span&gt;&lt;br&gt;bankmarketingacr" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="440" y="-180" width="240" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="blob" value="&lt;span&gt;Azure Blob Storage&lt;/span&gt;&lt;br&gt;Model Registry" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="698.94" y="10" width="240" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="aks" value="AKS Cluster — bank-marketing-aks" style="swimlane;startSize=30;container=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;swimlaneLine=1;fontStyle=1;fontSize=13;rounded=1;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="160" width="980" height="400" as="geometry"/>
+                </mxCell>
+                <mxCell id="ns_prod" value="Namespace: bank-marketing (production)" style="swimlane;startSize=30;container=1;collapsible=0;fillColor=#d4e1f5;strokeColor=#6c8ebf;swimlaneLine=1;fontStyle=1;fontSize=11;rounded=1;" parent="aks" vertex="1">
+                    <mxGeometry x="20" y="45" width="430" height="340" as="geometry"/>
+                </mxCell>
+                <mxCell id="dep_prod" value="&lt;span&gt;Deployment: bank-marketing-api&lt;/span&gt;&lt;br&gt;2 replicas · FastAPI + model.pkl" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=center;fontStyle=1" parent="ns_prod" vertex="1">
+                    <mxGeometry x="35" y="50" width="360" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="svc_prod" value="&lt;span&gt;Service: bank-marketing-api&lt;/span&gt;&lt;br&gt;Type: LoadBalancer · Port 80 → 8000" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=center;fontStyle=1" parent="ns_prod" vertex="1">
+                    <mxGeometry x="35" y="160" width="360" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="ns_dev" value="Namespace: bank-marketing-dev (staging)" style="swimlane;startSize=30;container=1;collapsible=0;fillColor=#d4e1f5;strokeColor=#6c8ebf;swimlaneLine=1;fontStyle=1;fontSize=11;rounded=1;" parent="aks" vertex="1">
+                    <mxGeometry x="490" y="45" width="430" height="340" as="geometry"/>
+                </mxCell>
+                <mxCell id="dep_dev" value="&lt;span&gt;Deployment: bank-marketing-api&lt;/span&gt;&lt;br&gt;1 replica · FastAPI + model.pkl" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=center;fontStyle=1" parent="ns_dev" vertex="1">
+                    <mxGeometry x="35" y="50" width="360" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="svc_dev" value="&lt;span&gt;Service: bank-marketing-api&lt;/span&gt;&lt;br&gt;Type: ClusterIP · Port 8000 (internal)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=center;fontStyle=1" parent="ns_dev" vertex="1">
+                    <mxGeometry x="35" y="160" width="360" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="rq" value="ResourceQuota: 500m CPU · 512Mi mem · 2 pods max" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;align=center;dashed=1;fontStyle=1" parent="ns_dev" vertex="1">
+                    <mxGeometry x="35" y="268" width="360" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="5" value="" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=12;image=img/lib/azure2/other/AKS_Automatic.svg;" vertex="1" parent="aks">
+                    <mxGeometry x="890" y="-40" width="90" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="client" value="&lt;span&gt;Client / Upstream Service&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="165" y="767" width="220" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="lb" value="&lt;span&gt;Azure Load Balancer&lt;/span&gt;&lt;br&gt;External IP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="145" y="640" width="260" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="icon_lb" value="" style="aspect=fixed;html=1;perimeter=ellipsePerimeter;image=img/lib/azure2/networking/Load_Balancers.svg;fontStyle=1" parent="lb" vertex="1">
+                    <mxGeometry x="228" y="4" width="24" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" value="buildId + latest&lt;br&gt;(AcrPull)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;fontColor=#6c8ebf;strokeColor=#6c8ebf;entryX=0.3;entryY=0;entryDx=0;entryDy=0;fontStyle=1" parent="1" source="acr" target="dep_prod" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="560" y="-40"/>
+                            <mxPoint x="203" y="-40"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e2" value="dev-buildId&lt;br&gt;(AcrPull)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;fontColor=#6c8ebf;strokeColor=#6c8ebf;entryX=0.3;entryY=0;entryDx=0;entryDy=0;fontStyle=1" parent="1" source="acr" target="dep_dev" edge="1">
+                    <mxGeometry x="-0.3724" relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="560" y="-40"/>
+                            <mxPoint x="673" y="-40"/>
+                        </Array>
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e3" value="&lt;span&gt;production/artifacts/model.pkl&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;fontColor=#d6b656;strokeColor=#d6b656;entryX=0.7;entryY=0;entryDx=0;entryDy=0;fontStyle=1" parent="1" source="blob" target="dep_prod" edge="1">
+                    <mxGeometry x="0.4011" relative="1" as="geometry">
+                        <mxPoint y="-1" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e4" value="&lt;font&gt;staging/artifacts/model.pkl&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=9;fontColor=#d6b656;strokeColor=#d6b656;entryX=0.7;entryY=0;entryDx=0;entryDy=0;fontStyle=1" parent="1" source="blob" target="dep_dev" edge="1">
+                    <mxGeometry x="-0.6404" y="-2" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;fontStyle=1" parent="1" source="dep_prod" target="svc_prod" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontStyle=1" parent="1" source="svc_prod" target="lb" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e7" value="&lt;span&gt;POST /predict&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=10;fontColor=#666666;strokeColor=#666666;fontStyle=1" parent="1" source="client" target="lb" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="2" value="" style="points=[];aspect=fixed;html=1;align=center;shadow=0;dashed=0;fillColor=#FF6A00;strokeColor=none;shape=mxgraph.alibaba_cloud.acr_cloud_container_registry;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="630" y="-210" width="68.94" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="" style="image;sketch=0;aspect=fixed;html=1;points=[];align=center;fontSize=12;image=img/lib/mscae/BlobBlock.svg;" parent="1" vertex="1">
+                    <mxGeometry x="888.94" width="50" height="42" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

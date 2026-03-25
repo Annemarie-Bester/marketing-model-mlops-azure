@@ -1,0 +1,56 @@
+# Data — raw files and outputs not tracked; directory structure preserved via .gitkeep
+data/raw/*
+!data/raw/.gitkeep
+data/results/*
+!data/results/.gitkeep
+
+# Model artifacts — ignore everything except metrics.json and .gitkeep
+artifacts/*
+!artifacts/metrics.json
+!artifacts/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+GAPS.md
+
+# Environment variables
+.env
+
+#TODO list
+docs/todos.md
+# Downloaded binaries (local tooling, not part of the project)
+kubectl
+minikube-linux-amd64
+kind
+kubeconform
+LICENSE
+notebooks/LICENSE
+preloaded-images-k8s-*

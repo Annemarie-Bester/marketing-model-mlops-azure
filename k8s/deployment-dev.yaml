@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bank-marketing-api
+  namespace: bank-marketing-dev
+  labels:
+    app: bank-marketing-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bank-marketing-api
+  template:
+    metadata:
+      labels:
+        app: bank-marketing-api
+    spec:
+      containers:
+        - name: api
+          # Image is overridden at deploy time by the KubernetesManifest@1 task
+          # using $(ACR_NAME).azurecr.io/$(INFER_IMAGE_NAME):<tag> from the variable group.
+          # Default below is used only for local kubectl apply.
+          image: bankmarketingacr.azurecr.io/bank-marketing-api:dev-latest
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          env:
+            - name: UVICORN_WORKERS
+              value: "1"
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bank-marketing-api-key
+                  key: API_KEY
+            # Load model artifact from Azure Blob Storage (same as production)
+            - name: STORAGE_BACKEND
+              value: "azure_blob"
+            - name: AZURE_STORAGE_ACCOUNT_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: azure-storage
+                  key: ACCOUNT_NAME
+            - name: AZURE_STORAGE_CONTAINER
+              valueFrom:
+                secretKeyRef:
+                  name: azure-storage
+                  key: CONTAINER_NAME
+            # Staging uses staging/ model path; production uses production/
+            - name: MODEL_BLOB_PREFIX
+              value: "staging"
+      # imagePullSecrets not required — AKS managed identity has AcrPull
+      # via --attach-acr (see notebooks/07_operationalisation.ipynb § 4)
