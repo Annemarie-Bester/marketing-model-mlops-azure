@@ -61,8 +61,6 @@ A living record of architectural and engineering decisions made during this proj
 
 **When to upgrade to MLflow:** When the project needs to compare more than a handful of experimental runs simultaneously, enforce a formal `Staging → Production` gate with team approval, or integrate with a downstream system that queries the MLflow Model Registry API. See [future-enhancements.md § MLflow on ACI](future-enhancements.md#mlflow-on-aci--model-registry-upgrade) for the implementation plan.
 
-> Cross-reference: [docs/GAPS.md § 9 — Architecture Finalisation Priority](GAPS.md#9-architecture-finalisation-priority) (decision A8) and I14 / I16 in [docs/GAPS.md § 10 — Infrastructure Finalisation Priority](GAPS.md#10-infrastructure-finalisation-priority).
-
 ### Fairlearn in-pipeline fairness assessment over Azure ML RAI Dashboard
 
 **Decision:** Compute fairness metrics directly in `src/evaluate.py` using Fairlearn, rather than generating a full Responsible AI dashboard via Azure ML, or addressing fairness through documentation only.
@@ -100,8 +98,6 @@ A living record of architectural and engineering decisions made during this proj
 **Tradeoff accepted:** Fairlearn metrics measure outcome disparity but do not explain causal sources of bias (that requires SHAP/LIME explainability, available separately). The dashboard's interactive error analysis is deferred — it is most valuable when debugging an underperforming subgroup, which requires production traffic data not yet available.
 
 **When to revisit:** When the model handles real customer data, when a regulatory obligation requires documented fairness evidence (e.g., Fair Lending Act, ECOA for financial services), or when a specific subgroup underperformance is identified in production monitoring.
-
-> Cross-reference: [docs/GAPS.md § 3 — Data Quality & Responsible AI](GAPS.md#3-data-quality-validation--responsible-ai) and [docs/GAPS.md § 9 — Architecture Finalisation Priority](GAPS.md#9-architecture-finalisation-priority) (decision A9).
 
 ---
 
@@ -144,8 +140,6 @@ The NGINX Ingress path is the correct production answer. It is deferred because:
 3. The `LoadBalancer` Service, API key authentication, and network policies provide baseline security that is proportionate to the case study scope
 
 **When to revisit:** When the API handles real customer data, when the service is exposed beyond a development/demo context, or when a second service is added (at which point NGINX Ingress provides path-based routing as well as TLS).
-
-> Cross-reference: [docs/GAPS.md § 2 — RBAC & Access Control](GAPS.md#2-rbac--access-control) and [docs/GAPS.md § 9 — Architecture Finalisation Priority](GAPS.md#9-architecture-finalisation-priority) (decisions A1, A2).
 
 ---
 
@@ -192,8 +186,6 @@ terraform {
 **Tradeoff accepted:** Terraform requires HCL fluency and state management discipline. The `terraform.tfstate` file is sensitive (contains resource IDs and some secrets) and must be stored in the Blob Storage backend with appropriate RBAC — not committed to Git. The `terraform import` migration from the existing CLI-provisioned resources requires careful sequencing: import before plan, verify state accuracy, then apply any drift corrections.
 
 **When to revisit:** If the project migrates to a fully Azure-native toolchain (Azure DevOps + Azure Pipelines + Bicep + AKS) and Kubernetes resource management is handled entirely via Helm or GitOps (Flux/Argo CD), Bicep becomes a more coherent choice for the Azure layer. At current scope, the unified Terraform approach is more maintainable.
-
-> Cross-reference: [docs/GAPS.md § 6 — Operational Readiness](GAPS.md#6-operational-readiness) and [docs/GAPS.md § 9 — Architecture Finalisation Priority](GAPS.md#9-architecture-finalisation-priority) (decision A10) and I20 in [docs/GAPS.md § 10 — Infrastructure Finalisation Priority](GAPS.md#10-infrastructure-finalisation-priority).
 
 ---
 
@@ -317,8 +309,6 @@ The connection string is stored in a Kubernetes Secret and injected as an env va
 
 **When to revisit:** If the project adds a second service or adopts a service mesh, the OTel foundation here makes distributed tracing across services straightforward via W3C `traceparent` header propagation — no rework needed.
 
-> Cross-reference: [docs/GAPS.md § 5 — Monitoring](GAPS.md#5-monitoring--model--system) and [docs/GAPS.md § 9 — Architecture Finalisation Priority](GAPS.md#9-architecture-finalisation-priority) (decision A4).
-
 ### Structured JSON logging via python-json-logger over format-string logging
 
 **Decision:** Replace Python's default format-string logging with structured JSON output using `python-json-logger`, rather than relying on OpenTelemetry's log exporter alone or retaining format-string logs parsed via regex in Log Analytics.
@@ -365,5 +355,3 @@ traces
 **Tradeoff accepted:** JSON logs are less immediately human-readable than format strings when tailing raw stdout. This is mitigated by piping through `jq` locally (`python main.py serve | jq`) and is a standard practice in production Python services.
 
 **Implementation note:** Configure the formatter once in a `logging_config.py` or at the top of `app.py`'s module-level setup. All modules that obtain a logger via `logging.getLogger(__name__)` inherit the JSON formatter automatically — no per-module changes required.
-
-> Cross-reference: [docs/GAPS.md § 9 — Architecture Finalisation Priority](GAPS.md#9-architecture-finalisation-priority) (decision A5) and I8 / I11 in [docs/GAPS.md § 10 — Infrastructure Finalisation Priority](GAPS.md#10-infrastructure-finalisation-priority).

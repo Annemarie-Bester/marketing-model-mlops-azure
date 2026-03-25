@@ -26,7 +26,7 @@ End-to-end infrastructure and system design for the Bank Marketing MLOps project
 ```mermaid
 flowchart LR
     subgraph Dev["Development"]
-        DC["Dev Container<br/>Python 3.12 · Docker · Azure CLI"]
+        DC["Dev Container<br/>Python 3.12 · Docker · Azure CLI · KinD"]
     end
 
     subgraph Source["Source Control"]
@@ -42,6 +42,7 @@ flowchart LR
 
     subgraph Azure["Azure Resources"]
         ACR["Azure Container Registry<br/>bankmarketingacr (Basic)"]
+        BLOB["Azure Blob Storage<br/>Model Registry + Training Data"]
         subgraph AKS["AKS Cluster — bank-marketing-aks"]
             subgraph NS_PROD["Namespace: bank-marketing (production)"]
                 POD_PROD["2 replicas · FastAPI + model.pkl"]
@@ -69,6 +70,10 @@ flowchart LR
     ACR -->|"image pull (AcrPull)"| POD_DEV
     POD_PROD --> SVC_PROD
     POD_DEV --> SVC_DEV
+    P2 -->|"model.pkl + metrics.json"| BLOB
+    P3 -->|"retrained model.pkl"| BLOB
+    BLOB -->|"model loaded at startup"| POD_PROD
+    BLOB -->|"model loaded at startup"| POD_DEV
     POD_PROD -->|"metrics + logs"| MON
     POD_PROD -->|"traces + errors"| AI
 ```
@@ -77,11 +82,12 @@ flowchart LR
 
 | Layer | Component | Purpose |
 |---|---|---|
-| Development | Dev Container | Reproducible local environment (Python 3.12, Docker, Azure CLI) |
+| Development | Dev Container | Reproducible local environment (Python 3.12, Docker, Azure CLI, KinD) |
 | Source Control | GitHub | Code, config, pipeline definitions, branch protection |
 | CI/CD | Azure DevOps Pipelines | Three-pipeline architecture — PR validation + push-triggered CI/CD + scheduled retraining |
 | Registry | Azure Container Registry | Private Docker image hosting (Basic SKU) |
 | Runtime | Azure Kubernetes Service | Managed Kubernetes cluster — two namespaces: `bank-marketing` (production) and `bank-marketing-dev` (staging) |
+| Storage | Azure Blob Storage | Model registry (`model-registry` container) + training data (`$(BLOB_CONTAINER_TRAINING)`) |
 | Observability | Azure Monitor + App Insights | Metrics, logs, traces, and alerting |
 
 ---
@@ -95,11 +101,14 @@ Local development runs inside a VS Code Dev Container. All dependencies, tooling
 | Base image | `mcr.microsoft.com/devcontainers/python:3.12-bookworm` |
 | Docker access | Docker-outside-of-Docker feature (uses host Docker daemon) |
 | Azure CLI | Pre-installed via Dev Container feature |
+| KinD | Pre-installed via Dev Container feature — local Kubernetes cluster for testing |
 | Python deps | Installed automatically via `postCreateCommand: pip install -r requirements-local.txt` |
 | ML pipeline | `python main.py train` / `python main.py predict` |
 | Tests | `python -m pytest tests/ -v --tb=short` |
 | Container build | `docker build` from inside the Dev Container |
+| Local K8s testing | `kind create cluster --config kind-config.yaml` — mounts `data/` and `artifacts/` into the cluster |
 | K8s validation | `kubeconform -strict k8s/` (manual install) |
+| Port forwarding | `8000` (FastAPI) and `8888` (Jupyter) forwarded automatically |
 
 > See [docs/local-development.md](local-development.md) for detailed commands covering the full local development workflow.
 
@@ -115,10 +124,12 @@ flowchart TD
 
     RG --> ACR["Azure Container Registry<br/>bankmarketingacr<br/>SKU: Basic"]
     RG --> AKS["Azure Kubernetes Service<br/>bank-marketing-aks<br/>2 nodes · Standard_B2s"]
+    RG --> BLOB["Azure Blob Storage<br/>Model Registry + Training Data"]
     RG --> MON["Azure Monitor<br/>(AKS monitoring addon)"]
     RG --> AI["Application Insights<br/>bank-marketing-insights"]
 
     ACR ---|"AcrPull role (--attach-acr)"| AKS
+    BLOB ---|"model.pkl at startup"| AKS
 ```
 
 ### Resource Inventory
@@ -128,14 +139,13 @@ flowchart TD
 | Resource Group | `rg-bank-marketing` | — | Logical grouping for all project resources |
 | Container Registry | `bankmarketingacr` | Basic | Private Docker image hosting |
 | Kubernetes Service | `bank-marketing-aks` | 2× Standard_B2s nodes | Managed cluster running the prediction API |
+| Blob Storage | *(Storage Account)* | — | Model registry (`model-registry` container), training data (`$(BLOB_CONTAINER_TRAINING)` container), baseline metrics |
 | Monitor | *(AKS addon)* | — | Cluster-level metrics, logs, and alerts |
 | Application Insights | `bank-marketing-insights` | — | Application-level traces, errors, and performance |
 
 ### ACR–AKS Integration
 
-AKS is created with `--attach-acr bankmarketingacr`, which grants the AKS managed identity the `AcrPull` role on the registry. This eliminates the need for `imagePullSecrets` in Kubernetes manifests.
-
-> See [docs/todos.md § 2](todos.md#2-azure-infrastructure-setup-console) for the full provisioning checklist.
+AKS is provisioned with `--attach-acr bankmarketingacr`, which grants the AKS managed identity the `AcrPull` role on the registry. In addition, the Kubernetes manifests include `imagePullSecrets: acr-secret` as a portable fallback — this supports local KinD clusters and environments where managed identity is not configured. In AKS with `--attach-acr`, the `imagePullSecrets` reference is harmless if the secret does not exist (the managed identity takes precedence).
 
 ### RBAC Role Assignments
 
@@ -199,8 +209,6 @@ az role assignment create \
   --role "Azure Kubernetes Service Cluster User Role" \
   --scope "$(az aks show --resource-group rg-bank-marketing --name bank-marketing-aks --query id -o tsv)"
 ```
-
-> Cross-reference: [docs/GAPS.md § 2 — RBAC & Access Control](GAPS.md#2-rbac--access-control).
 
 ---
 
@@ -266,20 +274,20 @@ flowchart TD
     end
 
     subgraph P1["Pipeline 1: pr-validation.yml"]
-        VAL["Install → pytest → kubeconform<br/>→ Build train image → Run training<br/>→ Build infer image → smoke test"]
+        VAL["gitleaks → Install → pip-audit → pytest<br/>→ kubeconform → Build train image<br/>→ Trivy scan → Run training<br/>→ Build infer image → Trivy scan<br/>→ smoke test"]
     end
 
     subgraph P2_DEV["Pipeline 2 (dev path)"]
-        CI_D["CI: Install → pytest → kubeconform"]
-        TRAIN_D["TrainModel: Build + run training container<br/>→ push train image to ACR<br/>→ publish model artifacts"]
-        CD_D["CD_Dev: Download artifacts → build infer image<br/>→ push (dev-sha) → deploy bank-marketing-dev<br/>→ in-cluster smoke test"]
+        CI_D["CI: Install → pip-audit → pytest<br/>→ kubeconform → DetectChanges"]
+        TRAIN_D["TrainModel (conditional): Build + run<br/>training container → Trivy scan<br/>→ upload to Blob → push train image to ACR"]
+        CD_D["CD_Dev: Promote model to staging/ in Blob<br/>→ build infer image → Trivy scan<br/>→ push (dev-sha) → deploy bank-marketing-dev<br/>→ in-cluster smoke test → rolling restart"]
         CI_D --> TRAIN_D --> CD_D
     end
 
     subgraph P2_MAIN["Pipeline 2 (main path)"]
-        CI_M["CI: Install → pytest → kubeconform"]
-        TRAIN_M["TrainModel: Build + run training container<br/>→ push train image to ACR<br/>→ publish model artifacts"]
-        CD_M["CD_Main: Download artifacts → build infer image<br/>→ push (sha + latest) → deploy bank-marketing<br/>→ live smoke test"]
+        CI_M["CI: Install → pip-audit → pytest<br/>→ kubeconform → DetectChanges"]
+        TRAIN_M["TrainModel (conditional): Build + run<br/>training container → Trivy scan<br/>→ upload to Blob → push train image to ACR"]
+        CD_M["CD_Main: Promote model to production/ in Blob<br/>→ build infer image → Trivy scan<br/>→ push (sha + latest) → deploy bank-marketing<br/>→ live smoke test → rolling restart"]
         CI_M --> TRAIN_M --> CD_M
     end
 
@@ -303,20 +311,23 @@ Triggered by PRs targeting `dev` or `main` via the `pr:` YAML keyword. Runs iden
 
 | Step | What it catches |
 |---|---|
+| Secret scanning (`gitleaks`) | Leaked credentials, API keys, tokens committed to the repo |
+| Dependency vulnerability scan (`pip-audit`) | Known CVEs in Python dependencies |
 | `pytest` | Logic errors, API contract changes, config mistakes |
 | `kubeconform` | K8s manifest schema errors, invalid resource specs |
 | Train image build + run | Dockerfile.train errors, training pipeline failures |
+| Container vulnerability scan (`trivy`) | OS and dependency CVEs in Docker images |
 | Infer image build | Dockerfile.infer errors, missing model artifact |
 | Container smoke test | Model loading failures, startup crashes, port issues |
 
 ### Pipeline 2 — CI/CD (`azure-pipelines.yml`)
 
-Triggered by pushes (merges) to `dev` and `main`. Runs a shared CI stage, then a TrainModel stage (build + run training container, push to ACR, publish model artifacts), followed by a branch-conditional CD stage that builds the inference image with the model baked in:
+Triggered by pushes (merges) to `dev` and `main`. The CI stage runs tests and detects which files changed. If training-relevant files changed (ML pipeline code, config, dependencies, or `Dockerfile.train`), the `TrainModel` stage builds the training container, runs it, uploads `model.pkl` + `metrics.json` to Blob Storage, and pushes the training image to ACR. A branch-conditional CD stage then promotes the model to the appropriate Blob Storage prefix (`staging/` or `production/`), builds and pushes the inference image, deploys to AKS, runs a smoke test, and performs a rolling restart so pods load the new model from Blob Storage:
 
-| Target Branch | CD Stage | ACR Push (Inference) | AKS Deploy | Approval Gate |
-|---|---|---|---|---|
-| `dev` | `CD_Dev` (staging) | Yes (`dev-<buildId>` + `dev-latest`) | `bank-marketing-dev` | No |
-| `main` | `CD_Main` (production) | Yes (`<buildId>` + `latest`) | `bank-marketing` | Yes (`production` environment) |
+| Target Branch | CD Stage | Training Required? | Model Promotion | ACR Push (Inference) | AKS Deploy | Approval Gate |
+|---|---|---|---|---|---|---|
+| `dev` | `CD_Dev` (staging) | Conditional (skipped for non-ML changes) | `builds/<buildId>/` → `staging/` | Yes (`dev-<buildId>` + `dev-latest`) | `bank-marketing-dev` | No |
+| `main` | `CD_Main` (production) | Conditional (skipped for non-ML changes) | `builds/<buildId>/` → `production/` | Yes (`<buildId>` + `latest`) | `bank-marketing` | Yes (`production` environment) |
 
 ### Pipeline 3 — Retraining (`retrain.yml`)
 
@@ -347,6 +358,8 @@ Azure DevOps authenticates with external services via three service connections:
 | `azure-sub-connection` | Azure Resource Manager | AKS access, general Azure operations |
 | `acr-connection` | Docker Registry (ACR) | Push/pull container images |
 
+Connection names, ACR/AKS resource names, and Blob Storage settings are centralised in the `bank-marketing-vars` variable group in Azure DevOps. Pipeline YAML references these as `$(ACR_SERVICE_CONNECTION)`, `$(AZURE_SUBSCRIPTION)`, `$(ACR_NAME)`, `$(BLOB_STORAGE_ACCOUNT)`, etc.
+
 ### Environment & Approval Gate
 
 The `CD_Main` stage references `environment: 'production'` in Azure DevOps. This environment is configured with:
@@ -369,7 +382,7 @@ A **run-to-completion** job that executes the ML pipeline and writes `model.pkl`
 | Layer | Contents |
 |---|---|
 | Base | `python:3.12-slim` |
-| Dependencies | `requirements.txt` (core ML: pandas, scikit-learn, numpy, joblib, pyyaml) |
+| Dependencies | `requirements.txt` (pandas, scikit-learn, numpy, joblib, pyyaml, azure-storage-blob, azure-identity) |
 | Application | `src/` + `main.py` + `config.yaml` |
 | Volumes | `/app/data` (input) + `/app/artifacts` (output) — mounted at runtime |
 | Entrypoint | `python main.py train` |
@@ -400,10 +413,24 @@ The storage backend determines *where* that path is resolved:
 | Environment | `STORAGE_BACKEND` | Model source |
 |---|---|---|
 | Local Docker | `local` (default) | Volume mount: `-v ./artifacts:/app/artifacts:ro` |
-| AKS (production) | `azure_blob` | Azure Blob Storage (managed identity) |
-| AKS (dev) | `local` | `hostPath` volume or PVC |
+| AKS (production) | `azure_blob` | Azure Blob Storage (managed identity) — `MODEL_BLOB_PREFIX=production` |
+| AKS (dev/staging) | `azure_blob` | Azure Blob Storage (managed identity) — `MODEL_BLOB_PREFIX=staging` |
 
 This decoupling means **retraining does not require an image rebuild** — restart/rollout the pods and the new model is served.
+
+#### Blob Storage Model Registry
+
+Azure Blob Storage serves as a lightweight model registry. The `model-registry` container uses a prefix-based promotion pattern:
+
+| Blob Path | Written By | Purpose |
+|---|---|---|
+| `builds/<buildId>/model.pkl` | Pipeline 2 (`TrainModel`) | Immutable build artifact — audit trail |
+| `builds/retrain-<buildId>/model.pkl` | Pipeline 3 (`Retrain`) | Immutable retrain artifact |
+| `staging/artifacts/model.pkl` | Pipeline 2 (`CD_Dev`) / Pipeline 3 (`DeployStaging`) | Model served by `bank-marketing-dev` pods (`MODEL_BLOB_PREFIX=staging`) |
+| `production/artifacts/model.pkl` | Pipeline 2 (`CD_Main`) / Pipeline 3 (`DeployProduction`) | Model served by `bank-marketing` pods (`MODEL_BLOB_PREFIX=production`) |
+| `production/artifacts/metrics.json` | Pipeline 2 (`CD_Main`) / Pipeline 3 (`DeployProduction`) | Baseline metrics for the retrain quality gate |
+
+Promotion flow: `builds/<id>/` → `staging/artifacts/` → (approval gate) → `production/artifacts/`
 
 ### CI Artifact Handoff
 
@@ -424,10 +451,8 @@ flowchart LR
 
 | Tag | When Applied | Purpose |
 |---|---|---|
-| `<buildId>` | Every CI/CD run (Pipeline 2) on `main` | Immutable build identifier |
-| `train-latest` | Every CI/CD run (Pipeline 2) on `main` | Stable tag pulled by the retraining pipeline |
-| `dev-<buildId>` | Every CI/CD run (Pipeline 2) on `dev` | Immutable dev build identifier |
-| `dev-latest` | Every CI/CD run (Pipeline 2) on `dev` | Dev training image tag |
+| `<buildId>` | Every CI/CD run (Pipeline 2) when TrainModel runs | Immutable build identifier |
+| `train-latest` | Every CI/CD run (Pipeline 2) when TrainModel runs | Stable tag pulled by the retraining pipeline |
 
 #### Inference Image (`INFER_IMAGE_NAME`)
 
@@ -466,17 +491,20 @@ flowchart TD
         subgraph NS_DEV["Namespace: bank-marketing-dev (staging)"]
             DEP_DEV["Deployment: bank-marketing-api<br/>1 replica · FastAPI + model.pkl"]
             SVC_DEV["Service: bank-marketing-api<br/>Type: ClusterIP · Port 8000 (internal)"]
-            RQ["ResourceQuota: 1 CPU max · 512Mi max"]
+            RQ["ResourceQuota: 500m CPU limit · 512Mi mem limit · 2 pods"]
         end
     end
 
     ACR["ACR · bankmarketingacr"]
+    BLOB["Azure Blob Storage<br/>Model Registry"]
     LB["Azure Load Balancer · External IP"]
     CLIENT["Client / Upstream Service"]
     CICD["CD_Dev (Pipeline 2)"]
 
     ACR -->|"sha + latest (AcrPull)"| DEP_PROD
     ACR -->|"dev-sha (AcrPull)"| DEP_DEV
+    BLOB -->|"production/artifacts/model.pkl"| DEP_PROD
+    BLOB -->|"staging/artifacts/model.pkl"| DEP_DEV
     DEP_PROD --> SVC_PROD
     SVC_PROD --> LB
     CLIENT -->|"POST /predict"| LB
@@ -493,7 +521,7 @@ flowchart TD
 | Replicas (`bank-marketing-dev`) | 1 | Single replica sufficient for staging smoke tests |
 | CPU request / limit | 250m / 500m | Logistic regression inference is lightweight |
 | Memory request / limit | 256Mi / 512Mi | `model.pkl` is small (< 10MB) |
-| Dev namespace `ResourceQuota` | 1 CPU, 512Mi | Prevents the staging workload from competing with production on shared nodes |
+| Dev namespace `ResourceQuota` | CPU: 250m request / 500m limit, Memory: 256Mi request / 512Mi limit, 2 pods max | Prevents the staging workload from competing with production on shared nodes |
 
 ### Health Probes
 
@@ -504,11 +532,7 @@ flowchart TD
 
 ### API Endpoints
 
-| Method | Path | Purpose | Used By |
-|---|---|---|---|
-| `POST` | `/predict` | Score a single customer record | Upstream services, batch callers |
-| `GET` | `/health` | Liveness/readiness probe | Kubernetes, CI smoke tests |
-| `GET` | `/docs` | Auto-generated OpenAPI documentation | Developers (FastAPI built-in) |
+| Method | Path | Purpose | Auth | Used By |\n|---|---|---|---|---|\n| `POST` | `/predict` | Score a single customer record | `X-API-Key` header (skipped if `API_KEY` env var unset) | Upstream services, batch callers |\n| `GET` | `/health` | Liveness/readiness probe | None | Kubernetes, CI smoke tests |\n| `GET` | `/docs` | Auto-generated OpenAPI documentation | None | Developers (FastAPI built-in) |
 
 > See [docs/deployment.md](deployment.md) for full Kubernetes manifest YAML and the container lifecycle.
 
@@ -566,7 +590,7 @@ flowchart TD
 ### Training Flow (Offline)
 
 1. `main.py train` loads `config.yaml` and raw CSV data
-2. `clean_data()` applies EDA-driven transformations (leakage column removal, age capping, log transforms, target encoding)
+2. `clean_data()` applies EDA-driven transformations (leakage column removal, age capping, `contacted_before` flag from pdays, log transforms, signed log transform for balance, target encoding)
 3. Stratified train/test split preserves class distribution
 4. `build_preprocessor()` creates an unfitted `ColumnTransformer` (impute → scale for numerics, one-hot for categoricals)
 5. `train()` wraps preprocessor + classifier into a single `sklearn.Pipeline` and fits on training data
@@ -596,7 +620,8 @@ flowchart TD
 | Two-pipeline CI/CD + retraining | Isolates PR validation from deployment logic; retrain pipeline handles data-driven model updates independently of code changes |
 | Console-first provisioning | Azure CLI for initial setup; Terraform planned as a future enhancement after the baseline is validated |
 | ACR Basic SKU | Sufficient for a single-service project; upgradeable if geo-replication or content trust is needed |
-| AKS with `--attach-acr` | Grants `AcrPull` via managed identity — eliminates `imagePullSecrets` and manual credential rotation |
+| AKS with `--attach-acr` | Grants `AcrPull` via managed identity. Manifests also include `imagePullSecrets: acr-secret` for portability across local KinD and AKS environments |
+| Blob Storage as model registry | Model artifacts stored in Azure Blob Storage with promotion pattern: `builds/<buildId>/` → `staging/` → `production/`. Simple, auditable, no additional registry service needed |
 | 2× Standard_B2s nodes | Cost-effective burstable VMs suited to lightweight sklearn inference |
 | Namespace-based environment isolation | Two namespaces (`bank-marketing` + `bank-marketing-dev`) within the same AKS cluster — provides a real staging environment without provisioning a second cluster. Follows [Microsoft's AKS isolation guidance](https://learn.microsoft.com/en-us/azure/aks/operator-best-practices-cluster-isolation): *"Separate teams and projects using logical isolation. Minimize the number of physical AKS clusters you deploy."* |
 | `production` environment with approval gate | Prevents unreviewed code from reaching production even if branch protection is misconfigured |
@@ -611,8 +636,9 @@ flowchart TD
 | `/health` endpoint | Required for Kubernetes liveness/readiness probes |
 | Logistic Regression as default | Interpretable, fast to train, better minority-class F1 than gradient boosting for this dataset |
 | Dual-container architecture (train + infer) | Training container runs to completion and produces artifacts; inference container loads the model at runtime from a mounted volume (local) or Azure Blob Storage (AKS). Follows [MLOps v2](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/machine-learning-operations-v2) inner loop / outer loop separation. |
-| Model loaded at runtime (not baked in) | Decouples model lifecycle from image lifecycle — retraining only requires a pod restart, not an image rebuild. Supports both local volume mounts and Azure Blob Storage via `STORAGE_BACKEND` env var. |
-| Training runs on CI agent (not AKS) | At current scale (< 10 MB dataset, seconds to train, no GPU), running training as a `docker run` on the CI agent is simpler and free. The training image is pushed to ACR for reuse by the retraining pipeline. Model artifacts can be uploaded to Azure Blob Storage via existing `STORAGE_BACKEND` env vars. AKS-based training via Kubernetes Jobs is a potential future enhancement — see [future-enhancements.md § AKS-Based Model Training](future-enhancements.md#aks-based-model-training-kubernetes-job). |
+| Model loaded at runtime (not baked in) | Decouples model lifecycle from image lifecycle — retraining only requires a pod restart, not an image rebuild. Supports both local volume mounts and Azure Blob Storage via `STORAGE_BACKEND` env var. `MODEL_BLOB_PREFIX` separates staging and production model paths. |
+| Training runs on CI agent (not AKS) | At current scale (< 10 MB dataset, seconds to train, no GPU), running training as a `docker run` on the CI agent is simpler and free. The training image is pushed to ACR for reuse by the retraining pipeline. Model artifacts are uploaded to Azure Blob Storage for runtime loading by inference pods. AKS-based training via Kubernetes Jobs is a potential future enhancement — see [future-enhancements.md § AKS-Based Model Training](future-enhancements.md#aks-based-model-training-kubernetes-job). |
+| Security scanning in all pipelines | `gitleaks` (secret scanning), `pip-audit` (dependency CVEs), and `trivy` (container image CVEs) run in both PR validation and CI/CD pipelines to catch vulnerabilities before merge and before deployment |
 
 ---
 

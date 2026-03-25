@@ -174,7 +174,7 @@ Drift detection continuously monitors inference-time data distributions against 
 
 ### Current State
 
-The project's retraining pipeline ([`.ado/retrain.yml`](../.ado/retrain.yml)) already supports three trigger modes:
+The project's retraining pipeline ([`.azure/retrain.yml`](../.azure/retrain.yml)) already supports three trigger modes:
 
 | Mode | Status | How |
 |---|---|---|
@@ -193,7 +193,7 @@ flowchart LR
     MONITOR -->|"drift exceeds threshold"| EG["Azure Event Grid<br/>(monitoring run completed event)"]
     EG -->|"trigger"| FUNC["Azure Function /<br/>Logic App"]
     FUNC -->|"POST /pipelines/{id}/runs"| ADO["Azure DevOps<br/>Pipelines REST API"]
-    ADO -->|"run"| RETRAIN[".ado/retrain.yml<br/>(Retrain → Validate → Deploy)"]
+    ADO -->|"run"| RETRAIN[".azure/retrain.yml<br/>(Retrain → Validate → Deploy)"]
 ```
 
 **Step-by-step:**
@@ -378,7 +378,7 @@ client.transition_model_version_stage("bank-marketing-pipeline", new_version, "P
 
 *Relevant to: Training pipeline — moving model training from CI agent to AKS cluster*
 *MLOps maturity level: 3–4*
-*Prerequisite maturity: Monitoring (§5 in [GAPS.md](GAPS.md)), Security (§4), Governance (§1–3), Operational Readiness (§6)*
+*Prerequisite maturity: Monitoring, Security, Governance, Operational Readiness*
 
 ### Context
 

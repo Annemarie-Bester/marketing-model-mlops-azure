@@ -14,7 +14,7 @@ Built to demonstrate MLOps engineering practices: reproducible pipelines, contai
 pip install -r requirements.txt
 
 # 2. Run the full training pipeline (load → features → train → evaluate)
-python main.py
+python main.py train
 
 # Outputs:
 #   artifacts/model.pkl       — trained model artifact
@@ -48,29 +48,41 @@ model:
 bank-marketing-mlops-azure/
 │
 ├── config.yaml               # Single source of truth for all configuration
-├── main.py                   # Pipeline entry point — run this to train
-├── requirements.txt          # Pinned dependencies
+├── main.py                   # Pipeline entry point — `python main.py train`
+├── Dockerfile.train          # Training container — runs full pipeline
+├── Dockerfile.infer          # Inference container — FastAPI + Uvicorn
+├── kind-config.yaml          # KinD cluster config for local K8s testing
+├── requirements.txt          # Training dependencies (pinned)
+├── requirements-infer.txt    # Inference dependencies (pinned, minimal)
+├── requirements-local.txt    # Local/CI dependencies (includes pytest)
 │
 ├── src/
+│   ├── config.py             # YAML config loader
 │   ├── data.py               # Data loading (config-driven, path-safe)
 │   ├── features.py           # Cleaning, feature engineering, preprocessing pipeline
 │   ├── train.py              # Model training + artifact saving
 │   ├── evaluate.py           # Evaluation metrics + metrics.json output
-│   └── api/                  # FastAPI serving layer (see API section below)
+│   ├── storage.py            # Storage abstraction (local filesystem / Azure Blob)
+│   └── api/
+│       └── app.py            # FastAPI serving layer (see API section below)
 │
-├── notebooks/
-│   └── 01_eda.ipynb          # Exploratory data analysis (observation only)
+├── tests/                    # pytest test suite
+│
+├── notebooks/                # Jupyter notebooks (EDA, setup, Docker, K8s)
 │
 ├── artifacts/
 │   ├── model.pkl             # Trained sklearn Pipeline (preprocessor + classifier)
-│   └── metrics.json          # Evaluation results (tracked in git)
+│   └── metrics.json          # Evaluation results
 │
 ├── data/
 │   └── raw/                  # Raw CSV data (excluded from git via .gitignore)
 │
-└── .github/
-    ├── agents/               # VS Code Copilot agent definitions
-    └── pipelines/            # Azure DevOps CI/CD pipeline definitions (coming)
+├── k8s/                      # Kubernetes manifests (deployment, service, quota, secret)
+│
+└── .azure/                   # Azure DevOps CI/CD pipeline definitions
+    ├── pr-validation.yml
+    ├── azure-pipelines.yml
+    └── retrain.yml
 ```
 
 ---
@@ -143,14 +155,17 @@ GitHub (source control)
     ▼
 Azure DevOps Pipelines (CI/CD)
     │
-    ├── CI: install → test → docker build → push to ACR
+    ├── CI: install → test → train → upload model to Blob Storage
     │
-    └── CD: pull from ACR → deploy to AKS → smoke test
+    ├── CD: build inference image → push to ACR → deploy to AKS
+    │
+    └── Model promotion: Blob copy builds/<id> → staging/ or production/
                                 │
                                 ▼
                     AKS Pod: FastAPI service
-                        │  loads artifacts/model.pkl
-                        │  POST /predict → {"subscription_probability": 0.73}
+                        │  loads model.pkl from Azure Blob Storage
+                        │  (MODEL_BLOB_PREFIX=staging|production)
+                        │  POST /predict → {"prediction": 0, "probability": 0.18, "label": "no"}
                         │
                         ▼
                     Azure Monitor / Application Insights
@@ -166,27 +181,27 @@ Full reproducibility is enforced by:
 - **Pinned dependencies** in `requirements.txt`
 - **Config-driven pipeline** — identical config always produces identical artifacts
 - **Stratified split** — class distribution preserved across train/test sets
-- **Single entry point** — `python main.py` is the only command needed
+- **Single entry point** — `python main.py train` is the only command needed
 
 ---
 
-## API (FastAPI — coming next)
+## API (FastAPI)
 
 The model is served via a FastAPI application in `src/api/`.
 
 ```bash
-uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000
 ```
 
 ```
-POST /predict
+POST /predict  (requires X-API-Key header when API_KEY is set)
 {
   "age": 35,
-  "job": "admin.",
+  "job": "management",
   "marital": "married",
   ...
 }
-→ {"subscribed": 0, "probability": 0.18}
+→ {"prediction": 0, "probability": 0.18, "label": "no"}
 
 GET /health  → {"status": "ok", "model": "logistic_regression"}
 ```
@@ -202,6 +217,7 @@ GET /health  → {"status": "ok", "model": "logistic_regression"}
 | Serving | FastAPI + Uvicorn |
 | Containerisation | Docker |
 | Registry | Azure Container Registry (ACR) |
+| Model Storage | Azure Blob Storage (prefix-based promotion) |
 | Orchestration | Azure Kubernetes Service (AKS) |
 | CI/CD | Azure DevOps Pipelines |
 | Monitoring | Azure Monitor + Application Insights |
@@ -219,3 +235,7 @@ Detailed system design and operational documentation:
 | [CI/CD Pipeline](docs/ci-cd-pipeline.md) | Build, test, containerise, and deploy pipeline stages |
 | [Deployment Architecture](docs/deployment.md) | AKS structure, Kubernetes manifests, API exposure, container lifecycle |
 | [MLOps Lifecycle](docs/mlops-lifecycle.md) | Training → deployment → monitoring → retraining lifecycle |
+| [Design Tradeoffs](docs/design-tradeoffs.md) | Architectural decisions with tradeoff analysis |
+| [Future Enhancements](docs/future-enhancements.md) | Planned improvements and upgrade paths |
+| [Local Development](docs/local-development.md) | Dev container setup, local testing, KinD cluster |
+| [Operationalisation](docs/operationalisation.md) | Azure infrastructure provisioning, ADO setup, deployment validation |

@@ -1,10 +1,11 @@
-# Data (raw files not tracked — add processed artifacts only if needed)
-data/raw/
-data/results/
+# Data — raw files and outputs not tracked; directory structure preserved via .gitkeep
+data/raw/*
+!data/raw/.gitkeep
+data/results/*
+!data/results/.gitkeep
 
-# Model artifacts — keep directory structure, ignore binary/large files
-artifacts/*.pkl
-# metrics.json is intentionally tracked (shows results to reviewers)
+# Model artifacts — ignore everything except metrics.json and .gitkeep
+artifacts/*
 !artifacts/metrics.json
 !artifacts/.gitkeep
 

@@ -67,27 +67,29 @@ All behaviour is controlled by `config.yaml`. Changing the model type, test size
 
 ## Model Versioning
 
-This project uses a simple, Git-based versioning approach appropriate for a case study scope:
+This project uses Azure Blob Storage as a lightweight model registry with prefix-based promotion:
 
 ```mermaid
 flowchart LR
     subgraph Versioning["Model Versioning Strategy"]
-        GIT["Git commit SHA<br/>= model version"]
-        PKL["artifacts/model.pkl<br/>committed to repo"]
-        MET["artifacts/metrics.json<br/>committed to repo"]
-        TAG["Docker image tag<br/>= Git SHA"]
+        BUILD["CI Build ID<br/>= model version"]
+        BLOB["Azure Blob Storage<br/>builds/&lt;buildId&gt;/artifacts/"]
+        PROMOTE["Prefix-based promotion<br/>staging/artifacts/ or production/artifacts/"]
+        TAG["Docker image tag<br/>= Build ID"]
     end
 
-    GIT --> PKL
-    GIT --> MET
-    GIT --> TAG
+    BUILD --> BLOB
+    BLOB --> PROMOTE
+    BUILD --> TAG
 ```
 
 | Approach | How |
 |---|---|
-| **Model identity** | Tied to Git commit SHA — each commit that changes `model.pkl` is a new model version |
-| **Metrics tracking** | `artifacts/metrics.json` committed alongside the model — metrics and model always in sync |
-| **Container traceability** | Docker images tagged with commit SHA — the running container maps back to exact source + model |
+| **Model identity** | Tied to CI Build ID — each training run produces a versioned blob prefix (`builds/<buildId>/artifacts/`) |
+| **Metrics tracking** | `metrics.json` uploaded alongside `model.pkl` to the same Blob Storage prefix — metrics and model always in sync |
+| **Model promotion** | Blob copy from `builds/<buildId>/` → `staging/artifacts/` or `production/artifacts/` — controlled by pipeline stage |
+| **Container traceability** | Docker images tagged with Build ID — the running container maps back to exact build + model |
+| **Runtime loading** | Inference pods read `MODEL_BLOB_PREFIX` env var to load the correct model from Blob Storage at startup |
 | **Reproducibility** | Fixed random seed + pinned dependencies + config-driven pipeline = deterministic output |
 
 ### Why not MLflow / Model Registry?
@@ -105,31 +107,31 @@ This is a deliberate simplification — the architecture supports upgrading to a
 
 ## Outer Loop — Model Deployment
 
-Once a model is trained and committed, the outer loop deploys it to production.
+Once a model is trained and uploaded to Blob Storage, the outer loop deploys it to production.
 
 ```mermaid
 flowchart LR
-    COMMIT["Git commit<br/>(model.pkl + metrics.json)"]
-    PR["PR → main"]
-    CI["CI: tests pass"]
-    BUILD["Docker build<br/>image includes model.pkl"]
+    TRAIN["CI: Train model<br/>(model.pkl → Blob Storage)"]
+    PROMOTE["CI: Promote model<br/>(builds/buildId → staging/ or production/)"]
+    BUILD["Docker build<br/>inference image (no model baked in)"]
     ACR["Push to ACR"]
     AKS["Deploy to AKS"]
+    LOAD["Pod startup:<br/>load model.pkl from Blob Storage"]
     LIVE["Model serving<br/>via FastAPI"]
 
-    COMMIT --> PR --> CI --> BUILD --> ACR --> AKS --> LIVE
+    TRAIN --> PROMOTE --> BUILD --> ACR --> AKS --> LOAD --> LIVE
 ```
 
 ### Deployment Trigger
 
 A model is deployed when:
 
-1. `model.pkl` is updated in the repository
-2. Changes are merged to `main` via a reviewed PR
-3. CI validates tests pass with the new artifact
-4. CD builds a new Docker image (containing the updated model) and deploys to AKS
+1. Training runs in CI (either from code changes or the retrain pipeline) and uploads `model.pkl` to Blob Storage
+2. The CI/CD pipeline promotes the model blob to the target prefix (`staging/artifacts/` or `production/artifacts/`)
+3. The inference image is built and pushed to ACR (model is NOT baked in)
+4. AKS deployment is updated and pods are restarted — each pod loads `model.pkl` from Blob Storage at startup via `MODEL_BLOB_PREFIX`
 
-Human review at the PR stage acts as the approval gate for model promotion.
+For code changes, human review at the PR stage acts as the approval gate. For scheduled retraining, the pipeline runs automatically with optional environment gates.
 
 ---
 

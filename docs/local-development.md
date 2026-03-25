@@ -12,10 +12,10 @@ The fastest way to work through local development is to run the notebooks in `no
 
 | Notebook | Covers | Sections below |
 |---|---|---|
-| [notebooks/01_devcontainer_setup.ipynb](../notebooks/01_devcontainer_setup.ipynb) | Dev Container verification, dependency install, project structure, config check | §1, §2 |
-| [notebooks/03_ml_pipeline.ipynb](../notebooks/03_ml_pipeline.ipynb) | Train, batch predict, pytest suite, direct inference | §3, §4, §10 |
-| [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) | Docker access, image build, container smoke tests, edge cases | §6, §7, §8 |
-| [notebooks/05_kubernetes_setup.ipynb](../notebooks/05_kubernetes_setup.ipynb) | kubectl/kind install, cluster bootstrap, manifest validation, deploy to both namespaces, CD_Dev simulation | §5, §9 |
+| [notebooks/01_devcontainer_setup.ipynb](../notebooks/01_devcontainer_setup.ipynb) | Dev Container verification, dependency install, project structure, config check, dataset | §1, §2, §3 |
+| [notebooks/03_ml_pipeline.ipynb](../notebooks/03_ml_pipeline.ipynb) | Train, batch predict, pytest suite, direct inference | §4, §5, §11 |
+| [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) | Docker access, image build, container smoke tests, edge cases | §7, §8, §9 |
+| [notebooks/05_kubernetes_setup.ipynb](../notebooks/05_kubernetes_setup.ipynb) | kubectl/kind install, cluster bootstrap, manifest validation, deploy to both namespaces, CD_Dev simulation | §6, §10 |
 | [notebooks/06_cleanup.ipynb](../notebooks/06_cleanup.ipynb) | Remove all local resources (container, image, kind cluster, artifacts, binaries) | — |
 
 Run notebooks in order: `01` → `02` → `03` → `04` → `05`. Run `06` to tear everything down. The reference commands in the sections below remain the authoritative source; the notebooks simply provide an interactive execution layer on top.
@@ -91,9 +91,39 @@ Key packages:
 
 ---
 
-## 3. Run the ML Pipeline
+## 3. Add the Dataset
+
+> **Notebook:** [notebooks/01_devcontainer_setup.ipynb](../notebooks/01_devcontainer_setup.ipynb) — Section 6 verifies the dataset is in place.
+
+The raw dataset is **not committed to the repository** (excluded via `.gitignore`). Place your CSV file in the expected location before training:
+
+```
+data/raw/bank_marketing_data.csv
+```
+
+The file must be semicolon-delimited (`;`) with the first column as the row index — this matches the `config.yaml` settings:
+
+```yaml
+data:
+  raw_path: data/raw/bank_marketing_data.csv
+  separator: ";"
+  index_col: 0
+```
+
+Verify the file is present:
+
+```bash
+ls -lh data/raw/bank_marketing_data.csv
+head -2 data/raw/bank_marketing_data.csv
+```
+
+---
+
+## 4. Run the ML Pipeline
 
 > **Notebook:** [notebooks/03_ml_pipeline.ipynb](../notebooks/03_ml_pipeline.ipynb) — Sections 1–3 train the model, inspect the artifact, and run batch predictions.
+
+> **Important:** Ensure the dataset is in place first (see [Section 3](#3-add-the-dataset)).
 
 ### Train
 
@@ -123,7 +153,7 @@ python main.py predict --input data/raw/bank_marketing_data.csv --output data/re
 
 ---
 
-## 4. Run Tests with pytest
+## 5. Run Tests with pytest
 
 > **Notebook:** [notebooks/03_ml_pipeline.ipynb](../notebooks/03_ml_pipeline.ipynb) — Sections 4–5 run the full test suite and individual test modules. Section 6 provides direct model inference for debugging.
 
@@ -161,7 +191,7 @@ python -m pytest tests/test_api.py -v
 
 ---
 
-## 5. Validate K8s Manifests (kubeconform)
+## 6. Validate K8s Manifests (kubeconform)
 
 > **Notebook:** [notebooks/05_kubernetes_setup.ipynb](../notebooks/05_kubernetes_setup.ipynb) — Section 5 installs kubeconform and validates all `k8s/` manifests.
 
@@ -203,11 +233,11 @@ Summary: 2 resources found parsing k8s/ - Valid: 2, Invalid: 0, Errors: 0, Skipp
 | Wrong field types | `replicas: "2"` (string instead of int) |
 | Missing required fields | Deployment without `selector` |
 
-> **Note:** kubeconform performs client-side schema validation only. It does not check cluster-specific constraints like admission policies or resource quotas — those require `kubectl --dry-run=server` against a live cluster (see [Section 9](#9-local-kubernetes-setup)).
+> **Note:** kubeconform performs client-side schema validation only. It does not check cluster-specific constraints like admission policies or resource quotas — those require `kubectl --dry-run=server` against a live cluster (see [Section 10](#10-local-kubernetes-setup)).
 
 ---
 
-## 6. Set Up Docker Locally
+## 7. Set Up Docker Locally
 
 > **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Section 1 verifies Docker access and troubleshoots common issues.
 
@@ -233,7 +263,7 @@ docker ps
 
 ---
 
-## 7. Docker Build
+## 8. Docker Build
 
 > **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 2–6 build and test the training container; Sections 7–13 build and test the inference container.
 
@@ -324,11 +354,11 @@ docker images | grep bank-marketing
 
 ---
 
-## 8. Local Container Smoke Test
+## 9. Local Container Smoke Test
 
 > **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 8–13 run the inference container, health check, prediction tests, edge cases, scripted pass/fail smoke test, log inspection, and cleanup.
 
-Run the inference image (built in [Section 7](#7-docker-build)) and verify the API starts correctly and responds to requests.
+Run the inference image (built in [Section 8](#8-docker-build)) and verify the API starts correctly and responds to requests.
 
 ### Start the Container
 
@@ -422,7 +452,7 @@ docker stop smoke-test && docker rm smoke-test
 
 ---
 
-## 9. Local Kubernetes Setup
+## 10. Local Kubernetes Setup
 
 > **Notebook:** [notebooks/05_kubernetes_setup.ipynb](../notebooks/05_kubernetes_setup.ipynb) — run top-to-bottom to install kubectl/kind, bootstrap the cluster, deploy to both namespaces, validate the ResourceQuota, and simulate the CD_Dev smoke test.
 
@@ -508,7 +538,7 @@ kind cluster: bm-local
 
 ### Deploy Locally
 
-Once you have built a Docker image (see [Section 7](#7-docker-build)), load it into the kind cluster and deploy to both namespaces.
+Once you have built a Docker image (see [Section 8](#8-docker-build)), load it into the kind cluster and deploy to both namespaces.
 
 > **Image override required:** The `k8s/deployment.yaml` and `k8s/deployment-dev.yaml` manifests reference ACR images (`bankmarketingacr.azurecr.io/bank-marketing-api:latest` and `:dev-latest`) because they are the source-of-truth for AKS deployments. The CI/CD pipeline substitutes the correct image tag at deploy time via the `KubernetesManifest@1` task's `containers:` input — the YAML files themselves are never modified in Git.
 >
@@ -703,7 +733,7 @@ kubectl config use-context kind-bm-local
 
 ---
 
-## 10. Local Inference Call Tests
+## 11. Local Inference Call Tests
 
 > **Notebook:** [notebooks/03_ml_pipeline.ipynb](../notebooks/03_ml_pipeline.ipynb) — Section 6 tests direct model inference without starting the API server. For full API inference over HTTP, use `04_docker_testing.ipynb`.
 
@@ -848,7 +878,7 @@ print(response.json())       # {"prediction": ..., "probability": ..., "label": 
 | Run inference container | `docker run -d --name smoke-test --network container:$(hostname) bank-marketing-api:local` |
 | Health check | `curl -s http://localhost:8000/health` |
 | Predict request | `curl -s -X POST http://localhost:8000/predict -H "Content-Type: application/json" -d '{...}'` |
-| Start kind cluster | `kind create cluster --config kind-config.yaml --retain` (see DooD note in Section 9) |
+| Start kind cluster | `kind create cluster --config kind-config.yaml --retain` (see DooD note in Section 10) |
 | Load image into kind | `kind load docker-image bank-marketing-api:local --name bm-local` |
 | Create namespaces | `kubectl create namespace bank-marketing && kubectl create namespace bank-marketing-dev` |
 | Deploy to production namespace | `kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -n bank-marketing` |
@@ -874,9 +904,9 @@ print(response.json())       # {"prediction": ..., "probability": ..., "label": 
 
 ### Python & Testing
 
-- pytest. [How to invoke pytest](https://docs.pytest.org/en/stable/how-to/usage.html). Official reference for `pytest` invocation patterns, `-v`, `--tb=short`, and module-level test selection used throughout Section 4.
+- pytest. [How to invoke pytest](https://docs.pytest.org/en/stable/how-to/usage.html). Official reference for `pytest` invocation patterns, `-v`, `--tb=short`, and module-level test selection used throughout Section 5.
 - FastAPI. [Testing — FastAPI](https://fastapi.tiangolo.com/tutorial/testing/). Documents the `TestClient` pattern used in `tests/test_api.py` for testing endpoints without a running server.
-- Uvicorn. [Running Uvicorn](https://www.uvicorn.org/#usage). Reference for the `uvicorn src.api.app:app --host --port` command used to start the API server locally in Section 10.
+- Uvicorn. [Running Uvicorn](https://www.uvicorn.org/#usage). Reference for the `uvicorn src.api.app:app --host --port` command used to start the API server locally in Section 11.
 
 ### Docker
 

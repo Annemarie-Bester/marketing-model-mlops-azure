@@ -271,15 +271,16 @@ sequenceDiagram
 
 ## Container Lifecycle
 
-The project uses a **dual-container architecture** — a training container produces `model.pkl`, and the CI pipeline bakes it into an inference container that is deployed to AKS. See [docs/architecture.md § Container Architecture](architecture.md#container-architecture) for the full design.
+The project uses a **dual-container architecture** — a training container produces `model.pkl` and uploads it to Azure Blob Storage, and a separate inference container loads the model from Blob Storage at runtime. See [docs/architecture.md § Container Architecture](architecture.md#container-architecture) for the full design.
 
 ```mermaid
 flowchart TD
     TRAIN_BUILD["CI: Build training image\n(Dockerfile.train)"]
-    TRAIN_RUN["CI: Run training container\n→ model.pkl + metrics.json"]
-    INFER_BUILD["CI: Build inference image\n(Dockerfile.infer — COPY model.pkl)"]
+    TRAIN_RUN["CI: Run training container\n→ model.pkl + metrics.json\n→ uploaded to Blob Storage"]
+    PROMOTE["CI: Promote model in Blob Storage\n(builds/buildId → staging/ or production/)"]
+    INFER_BUILD["CI: Build inference image\n(Dockerfile.infer — no model baked in)"]
 
-    TRAIN_BUILD --> TRAIN_RUN --> INFER_BUILD
+    TRAIN_BUILD --> TRAIN_RUN --> PROMOTE --> INFER_BUILD
 
     INFER_BUILD --> PUSH_Q{"Branch?"}
     PUSH_Q -->|"main"| PUSH_PROD["Push to ACR\ntags: buildId + latest"]
@@ -294,8 +295,8 @@ flowchart TD
     SCHEDULE_PROD --> PULL_PROD["Pod pulls image from ACR"]
     SCHEDULE_DEV --> PULL_DEV["Pod pulls image from ACR"]
 
-    PULL_PROD --> START_PROD["Container starts:<br/>uvicorn loads model.pkl"]
-    PULL_DEV --> START_DEV["Container starts:<br/>uvicorn loads model.pkl"]
+    PULL_PROD --> START_PROD["Container starts:<br/>uvicorn loads model.pkl from Blob Storage"]
+    PULL_DEV --> START_DEV["Container starts:<br/>uvicorn loads model.pkl from Blob Storage"]
 
     START_PROD --> READY_PROD["Readiness probe passes:<br/>GET /health → 200"]
     START_DEV --> READY_DEV["Readiness probe passes:<br/>GET /health → 200"]

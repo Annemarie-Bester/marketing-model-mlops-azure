@@ -182,7 +182,7 @@ Both branches point at the same pipeline definition. The steps are identical.
 
 ### Pipeline Definition
 
-> **Pipeline file:** [`.ado/pr-validation.yml`](../.ado/pr-validation.yml)
+> **Pipeline file:** [`.azure/pr-validation.yml`](../.azure/pr-validation.yml)
 
 The PR validation pipeline builds **both containers** locally (no ACR push) to validate the full training → inference flow:
 
@@ -222,7 +222,7 @@ The CI stage runs on every push to both branches. It contains two parallel jobs:
 - **Test & Validate** — repeats test and manifest validation from Pipeline 1 (the merge commit differs from the PR head commit, so re-validation is needed)
 - **DetectChanges** — diffs `HEAD~1` to determine whether training-relevant files changed, outputting `NEEDS_TRAIN=true|false`
 
-> **Pipeline file:** [`.ado/azure-pipelines.yml`](../.ado/azure-pipelines.yml)
+> **Pipeline file:** [`.azure/azure-pipelines.yml`](../.azure/azure-pipelines.yml)
 
 **Test & Validate job:**
 1. Install Python dependencies (`requirements-local.txt`)
@@ -294,51 +294,22 @@ Pods load `model.pkl` from Blob Storage at runtime via `MODEL_BLOB_PREFIX=produc
 |---|---|---|
 | Download model artifacts | `TRAINING_RAN=True` | Get `metrics.json` for baseline update |
 | Promote model to Blob Storage | `TRAINING_RAN=True` | Copy model from `builds/<buildId>/` to `production/artifacts/` path in Blob |
-| Build + push inference image | Always | Build `Dockerfile.infer`, push to ACR with commit SHA + `latest` tags |
+| Build + push inference image | Always | Build `Dockerfile.infer`, push to ACR with Build ID + `latest` tags |
 | Deploy to AKS | Always | Apply K8s manifests with the new image tag via `KubernetesManifest@1` |
 | Environment gate | Always | `production` environment enforces manual approval before deploy |
 | Live smoke test | Always | Validate the deployed service responds on its external LoadBalancer IP |
 | Rolling restart | `TRAINING_RAN=True` | Restart pods to pick up new model from Blob Storage |
-                  inputs:
-                    containerRegistry: '$(ACR_SERVICE_CONNECTION)'
-                    repository: 'bank-marketing-api'
-                    command: buildAndPush
-                    Dockerfile: '**/Dockerfile'
-                    tags: |
-                      $(Build.SourceVersion)
-                      latest
-
-                - task: KubernetesManifest@1
-                  displayName: 'Deploy to AKS'
-                  inputs:
-                    action: deploy
-                    connectionType: azureResourceManager
-                    azureSubscriptionConnection: '$(AZURE_SUBSCRIPTION)'
-                    azureResourceGroup: '$(RESOURCE_GROUP)'
-                    kubernetesCluster: '$(AKS_CLUSTER)'
-                    manifests: |
-                      k8s/deployment.yaml
-                      k8s/service.yaml
-                    containers: |
-                      $(ACR_NAME).azurecr.io/bank-marketing-api:$(Build.SourceVersion)
-
-                - script: |
-                    API_URL=$(kubectl get svc bank-marketing-api \
-                      -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                    curl -f http://$API_URL/health
-                  displayName: 'Live smoke test — GET /health'
-```
 
 | Step | Purpose |
 |---|---|
-| Docker build + push | Build production image, push to ACR with commit SHA + `latest` tags |
+| Docker build + push | Build production image, push to ACR with Build ID + `latest` tags |
 | Deploy to AKS | Apply K8s manifests with the new image tag via `KubernetesManifest@1` |
 | Environment gate | `production` environment can enforce manual approval before deploy |
 | Live smoke test | Validate the deployed service responds on its external LoadBalancer IP |
 
 ### Pipeline 3: Retraining (`retrain.yml`)
 
-> **Pipeline file:** [`.ado/retrain.yml`](../.ado/retrain.yml)
+> **Pipeline file:** [`.azure/retrain.yml`](../.azure/retrain.yml)
 
 The retraining pipeline is **not triggered by code pushes**. It handles data-driven model updates independently:
 
