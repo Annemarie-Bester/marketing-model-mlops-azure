@@ -39,6 +39,7 @@ When adding references:
 
 Allowed:
 - Create and edit `.md` files
+- Create and edit `.drawio` files in `docs/diagrams/` (use the `mermaid-to-drawio` skill to convert Mermaid diagrams)
 - Add minimal explanatory comments to code files (design decisions only)
 - Research and validate documentation sources via web
 
@@ -72,5 +73,6 @@ After writing documentation, suggest the user run `@reviewer` to validate comple
 - "Find official Azure references for AKS deployment and CI/CD"
 - "Write a docs/deployment.md covering the Docker → ACR → AKS flow"
 - "Curate the REFERENCES.md — remove weak sources, add official docs"
+- "Convert the architecture Mermaid diagram to a draw.io file"
 - "Add a monitoring section to the README"
 - "Research MLflow best practices for model versioning"

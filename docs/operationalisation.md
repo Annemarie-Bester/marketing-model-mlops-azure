@@ -176,7 +176,10 @@ az storage blob copy start \
 
 ### Grant IAM Roles to the ADO Service Principal
 
-The ADO service principal (`azure-sub-connection`) needs read access to training data and read+write access to the model registry container:
+The ADO service principal needs:
+- Read access to training data
+- Read+write access to the model registry
+- Cluster User access to AKS for `kubectl apply` during deployments
 
 ```bash
 # Get the service principal object ID from the ADO service connection
@@ -193,12 +196,42 @@ az role assignment create \
   --assignee $SP_ID \
   --role "Storage Blob Data Contributor" \
   --scope "/subscriptions/<sub-id>/resourceGroups/rg-bank-marketing/providers/Microsoft.Storage/storageAccounts/bankmarketingdata/blobServices/default/containers/model-registry"
+
+# AKS Cluster User — deploy manifests via kubectl in pipeline stages
+az role assignment create \
+  --assignee $SP_ID \
+  --role "Azure Kubernetes Service Cluster User Role" \
+  --scope "$(az aks show --resource-group rg-bank-marketing --name bank-marketing-aks --query id -o tsv)"
 ```
 
 Verify:
 
 ```bash
 az storage blob list --account-name bankmarketingdata --container-name training-data --auth-mode login
+```
+
+### Grant Developer Access (Optional)
+
+Grant team members read-only access to Azure resources for debugging and local testing. Replace `<DEVELOPER_ID>` with each developer's Azure AD object ID.
+
+```bash
+# Resource Group: Reader (view resources in portal)
+az role assignment create \
+  --assignee <DEVELOPER_ID> \
+  --role Reader \
+  --resource-group rg-bank-marketing
+
+# ACR: AcrPull (pull images for local testing)
+az role assignment create \
+  --assignee <DEVELOPER_ID> \
+  --role AcrPull \
+  --scope "$(az acr show --name bankmarketingacr --query id -o tsv)"
+
+# AKS: Cluster User (debug via kubectl)
+az role assignment create \
+  --assignee <DEVELOPER_ID> \
+  --role "Azure Kubernetes Service Cluster User Role" \
+  --scope "$(az aks show --resource-group rg-bank-marketing --name bank-marketing-aks --query id -o tsv)"
 ```
 
 ---

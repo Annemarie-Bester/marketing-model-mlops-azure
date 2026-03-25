@@ -161,54 +161,7 @@ All role assignments follow the principle of least privilege. The table below do
 | Developers | ACR (`bankmarketingacr`) | `AcrPull` | Pull images for local testing |
 | Developers | Resource Group (`rg-bank-marketing`) | `Reader` | View resources in the portal; no modification rights |
 
-#### Provisioning Commands
-
-Replace `<CI_CD_SP_ID>`, `<DEVELOPER_ID>`, and `<STORAGE_ACCOUNT>` with the actual principal object IDs and storage account name.
-
-```bash
-# Verify AKS managed identity → ACR AcrPull (already provisioned via --attach-acr)
-KUBELET_ID=$(az aks show \
-  --resource-group rg-bank-marketing \
-  --name bank-marketing-aks \
-  --query identityProfile.kubeletidentity.objectId -o tsv)
-az role assignment list --assignee "$KUBELET_ID" --all --output table
-
-# CI/CD service principal → ACR: AcrPush
-az role assignment create \
-  --assignee <CI_CD_SP_ID> \
-  --role AcrPush \
-  --scope "$(az acr show --name bankmarketingacr --query id -o tsv)"
-
-# CI/CD service principal → AKS: Cluster User
-az role assignment create \
-  --assignee <CI_CD_SP_ID> \
-  --role "Azure Kubernetes Service Cluster User Role" \
-  --scope "$(az aks show --resource-group rg-bank-marketing --name bank-marketing-aks --query id -o tsv)"
-
-# CI/CD service principal → Blob Storage: Data Contributor
-az role assignment create \
-  --assignee <CI_CD_SP_ID> \
-  --role "Storage Blob Data Contributor" \
-  --scope "$(az storage account show --name <STORAGE_ACCOUNT> --resource-group rg-bank-marketing --query id -o tsv)"
-
-# Developers → Resource Group: Reader
-az role assignment create \
-  --assignee <DEVELOPER_ID> \
-  --role Reader \
-  --resource-group rg-bank-marketing
-
-# Developers → ACR: AcrPull
-az role assignment create \
-  --assignee <DEVELOPER_ID> \
-  --role AcrPull \
-  --scope "$(az acr show --name bankmarketingacr --query id -o tsv)"
-
-# Developers → AKS: Cluster User
-az role assignment create \
-  --assignee <DEVELOPER_ID> \
-  --role "Azure Kubernetes Service Cluster User Role" \
-  --scope "$(az aks show --resource-group rg-bank-marketing --name bank-marketing-aks --query id -o tsv)"
-```
+> **Provisioning commands**: See [operationalisation.md §2 (Service Principal)](operationalisation.md#2-azure-container-registry-acr) and [§5 (Blob Storage IAM)](operationalisation.md#5-azure-blob-storage) for the runnable `az role assignment` commands. The notebook (`07_operationalisation.ipynb`) automates all SP role assignments.
 
 ---
 

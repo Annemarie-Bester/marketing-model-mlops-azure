@@ -17,6 +17,9 @@ spec:
     spec:
       containers:
         - name: api
+          # Image is overridden at deploy time by the KubernetesManifest@1 task
+          # using $(ACR_NAME).azurecr.io/$(INFER_IMAGE_NAME):<tag> from the variable group.
+          # Default below is used only for local kubectl apply.
           image: bankmarketingacr.azurecr.io/bank-marketing-api:latest
           ports:
             - containerPort: 8000
@@ -63,5 +66,5 @@ spec:
             # Production uses production/ model path; staging uses staging/
             - name: MODEL_BLOB_PREFIX
               value: "production"
-      imagePullSecrets:
-        - name: acr-secret
+      # imagePullSecrets not required — AKS managed identity has AcrPull
+      # via --attach-acr (see notebooks/07_operationalisation.ipynb § 4)

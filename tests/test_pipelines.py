@@ -205,7 +205,7 @@ class TestMainPipeline:
         """TrainModel must upload artifacts to blob storage model registry."""
         stages = {s["stage"]: s for s in main_pipeline["stages"]}
         text = yaml.dump(stages["TrainModel"])
-        assert "model-registry" in text
+        assert "BLOB_CONTAINER_REGISTRY" in text
         assert "model.pkl" in text
 
     def test_cd_dev_deploys_to_dev_namespace(self, main_pipeline):
@@ -353,10 +353,10 @@ class TestRetrainPipeline:
         assert "train-latest" in text
 
     def test_blob_model_registry_upload(self, retrain_pipeline):
-        """Retrain uploads to model-registry/builds/retrain-$(Build.BuildId)/."""
+        """Retrain uploads to $(BLOB_CONTAINER_REGISTRY)/builds/retrain-$(Build.BuildId)/."""
         stages = {s["stage"]: s for s in retrain_pipeline["stages"]}
         text = yaml.dump(stages["Retrain"])
-        assert "model-registry" in text
+        assert "BLOB_CONTAINER_REGISTRY" in text
         assert "retrain-" in text
 
     def test_staging_promotion(self, retrain_pipeline):
