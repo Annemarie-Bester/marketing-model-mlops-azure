@@ -28,7 +28,10 @@ DRY_RUN: bool = os.environ.get("INFRA_DRY_RUN", "0") == "1"
 def _dry_result(stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess:
     """Return a fake CompletedProcess for dry-run mode."""
     return subprocess.CompletedProcess(
-        args=["dry-run"], returncode=0, stdout=stdout, stderr=stderr,
+        args=["dry-run"],
+        returncode=0,
+        stdout=stdout,
+        stderr=stderr,
     )
 
 
@@ -67,23 +70,38 @@ def set_subscription(subscription_id: str) -> subprocess.CompletedProcess:
 
 def create_resource_group(name: str, location: str) -> subprocess.CompletedProcess:
     """Create a resource group."""
-    return run_az([
-        "group", "create",
-        "--name", name,
-        "--location", location,
-        "-o", "json",
-    ])
+    return run_az(
+        [
+            "group",
+            "create",
+            "--name",
+            name,
+            "--location",
+            location,
+            "-o",
+            "json",
+        ]
+    )
 
 
-def create_acr(resource_group: str, name: str, sku: str = "Basic") -> subprocess.CompletedProcess:
+def create_acr(
+    resource_group: str, name: str, sku: str = "Basic"
+) -> subprocess.CompletedProcess:
     """Create an Azure Container Registry."""
-    return run_az([
-        "acr", "create",
-        "--resource-group", resource_group,
-        "--name", name,
-        "--sku", sku,
-        "-o", "json",
-    ])
+    return run_az(
+        [
+            "acr",
+            "create",
+            "--resource-group",
+            resource_group,
+            "--name",
+            name,
+            "--sku",
+            sku,
+            "-o",
+            "json",
+        ]
+    )
 
 
 def create_aks(
@@ -95,13 +113,19 @@ def create_aks(
 ) -> subprocess.CompletedProcess:
     """Create an AKS cluster, optionally attached to an ACR."""
     args = [
-        "aks", "create",
-        "--resource-group", resource_group,
-        "--name", name,
-        "--node-count", str(node_count),
-        "--node-vm-size", node_vm_size,
+        "aks",
+        "create",
+        "--resource-group",
+        resource_group,
+        "--name",
+        name,
+        "--node-count",
+        str(node_count),
+        "--node-vm-size",
+        node_vm_size,
         "--generate-ssh-keys",
-        "-o", "json",
+        "-o",
+        "json",
     ]
     if acr_name:
         args.extend(["--attach-acr", acr_name])
@@ -110,12 +134,17 @@ def create_aks(
 
 def get_aks_credentials(resource_group: str, name: str) -> subprocess.CompletedProcess:
     """Download AKS cluster credentials into kubeconfig."""
-    return run_az([
-        "aks", "get-credentials",
-        "--resource-group", resource_group,
-        "--name", name,
-        "--overwrite-existing",
-    ])
+    return run_az(
+        [
+            "aks",
+            "get-credentials",
+            "--resource-group",
+            resource_group,
+            "--name",
+            name,
+            "--overwrite-existing",
+        ]
+    )
 
 
 def create_storage_account(
@@ -125,15 +154,25 @@ def create_storage_account(
     sku: str = "Standard_LRS",
 ) -> subprocess.CompletedProcess:
     """Create an Azure Storage account."""
-    return run_az([
-        "storage", "account", "create",
-        "--name", name,
-        "--resource-group", resource_group,
-        "--location", location,
-        "--sku", sku,
-        "--kind", "StorageV2",
-        "-o", "json",
-    ])
+    return run_az(
+        [
+            "storage",
+            "account",
+            "create",
+            "--name",
+            name,
+            "--resource-group",
+            resource_group,
+            "--location",
+            location,
+            "--sku",
+            sku,
+            "--kind",
+            "StorageV2",
+            "-o",
+            "json",
+        ]
+    )
 
 
 def create_blob_container(
@@ -141,13 +180,21 @@ def create_blob_container(
     container_name: str,
 ) -> subprocess.CompletedProcess:
     """Create a blob container in a storage account."""
-    return run_az([
-        "storage", "container", "create",
-        "--name", container_name,
-        "--account-name", account_name,
-        "--auth-mode", "login",
-        "-o", "json",
-    ])
+    return run_az(
+        [
+            "storage",
+            "container",
+            "create",
+            "--name",
+            container_name,
+            "--account-name",
+            account_name,
+            "--auth-mode",
+            "login",
+            "-o",
+            "json",
+        ]
+    )
 
 
 def upload_blob(
@@ -157,16 +204,26 @@ def upload_blob(
     file_path: str,
 ) -> subprocess.CompletedProcess:
     """Upload a file to blob storage."""
-    return run_az([
-        "storage", "blob", "upload",
-        "--account-name", account_name,
-        "--container-name", container_name,
-        "--name", blob_name,
-        "--file", file_path,
-        "--auth-mode", "login",
-        "--overwrite",
-        "-o", "json",
-    ])
+    return run_az(
+        [
+            "storage",
+            "blob",
+            "upload",
+            "--account-name",
+            account_name,
+            "--container-name",
+            container_name,
+            "--name",
+            blob_name,
+            "--file",
+            file_path,
+            "--auth-mode",
+            "login",
+            "--overwrite",
+            "-o",
+            "json",
+        ]
+    )
 
 
 def copy_blob(
@@ -177,14 +234,24 @@ def copy_blob(
     dest_blob: str,
 ) -> subprocess.CompletedProcess:
     """Copy a blob within the same storage account."""
-    return run_az([
-        "storage", "blob", "copy", "start",
-        "--account-name", account_name,
-        "--source-container", source_container,
-        "--source-blob", source_blob,
-        "--destination-container", dest_container,
-        "--destination-blob", dest_blob,
-    ])
+    return run_az(
+        [
+            "storage",
+            "blob",
+            "copy",
+            "start",
+            "--account-name",
+            account_name,
+            "--source-container",
+            source_container,
+            "--source-blob",
+            source_blob,
+            "--destination-container",
+            dest_container,
+            "--destination-blob",
+            dest_blob,
+        ]
+    )
 
 
 def enable_aks_monitoring(
@@ -192,13 +259,20 @@ def enable_aks_monitoring(
     name: str,
 ) -> subprocess.CompletedProcess:
     """Enable the AKS monitoring addon."""
-    return run_az([
-        "aks", "enable-addons",
-        "--resource-group", resource_group,
-        "--name", name,
-        "--addons", "monitoring",
-        "-o", "json",
-    ])
+    return run_az(
+        [
+            "aks",
+            "enable-addons",
+            "--resource-group",
+            resource_group,
+            "--name",
+            name,
+            "--addons",
+            "monitoring",
+            "-o",
+            "json",
+        ]
+    )
 
 
 def create_app_insights(
@@ -207,13 +281,22 @@ def create_app_insights(
     location: str,
 ) -> subprocess.CompletedProcess:
     """Create an Application Insights component."""
-    return run_az([
-        "monitor", "app-insights", "component", "create",
-        "--app", app_name,
-        "--location", location,
-        "--resource-group", resource_group,
-        "-o", "json",
-    ])
+    return run_az(
+        [
+            "monitor",
+            "app-insights",
+            "component",
+            "create",
+            "--app",
+            app_name,
+            "--location",
+            location,
+            "--resource-group",
+            resource_group,
+            "-o",
+            "json",
+        ]
+    )
 
 
 def create_service_principal(
@@ -232,9 +315,13 @@ def create_service_principal(
         CompletedProcess whose stdout contains JSON with appId, password, tenant.
     """
     args = [
-        "ad", "sp", "create-for-rbac",
-        "--name", name,
-        "--role", role,
+        "ad",
+        "sp",
+        "create-for-rbac",
+        "--name",
+        name,
+        "--role",
+        role,
     ]
     if scope:
         args.extend(["--scopes", scope])
@@ -248,13 +335,21 @@ def assign_role(
     scope: str,
 ) -> subprocess.CompletedProcess:
     """Assign an RBAC role to a principal."""
-    return run_az([
-        "role", "assignment", "create",
-        "--assignee", assignee,
-        "--role", role,
-        "--scope", scope,
-        "-o", "json",
-    ])
+    return run_az(
+        [
+            "role",
+            "assignment",
+            "create",
+            "--assignee",
+            assignee,
+            "--role",
+            role,
+            "--scope",
+            scope,
+            "-o",
+            "json",
+        ]
+    )
 
 
 def run_kubectl(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
@@ -289,17 +384,27 @@ def create_acr_purge_task(
     ago: str = "30d",
 ) -> subprocess.CompletedProcess:
     """Create an ACR purge task for image retention."""
-    return run_az([
-        "acr", "task", "create",
-        "--registry", registry,
-        "--name", task_name,
-        "--cmd", f"acr purge --filter '{filter_pattern}' --ago {ago} --untagged",
-        "--schedule", "0 1 * * *",
-        "--context", "/dev/null",
-    ])
+    return run_az(
+        [
+            "acr",
+            "task",
+            "create",
+            "--registry",
+            registry,
+            "--name",
+            task_name,
+            "--cmd",
+            f"acr purge --filter '{filter_pattern}' --ago {ago} --untagged",
+            "--schedule",
+            "0 1 * * *",
+            "--context",
+            "/dev/null",
+        ]
+    )
 
 
 # ── Dry-run response generator ──────────────────────────────────────────
+
 
 def _dry_run_response(args: list[str]) -> str:
     """Return realistic JSON stdout for az commands during dry-run.
@@ -319,47 +424,59 @@ def _dry_run_response(args: list[str]) -> str:
     if "group create" in cmd:
         name = _arg("--name")
         loc = _arg("--location")
-        return json.dumps({
-            "id": f"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/{name}",
-            "name": name,
-            "location": loc,
-        })
+        return json.dumps(
+            {
+                "id": f"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/{name}",
+                "name": name,
+                "location": loc,
+            }
+        )
 
     if "ad sp create-for-rbac" in cmd:
-        return json.dumps({
-            "appId": "dry-run-app-id-00000000",
-            "password": "dry-run-password-DO-NOT-USE",
-            "tenant": "dry-run-tenant-00000000",
-        })
+        return json.dumps(
+            {
+                "appId": "dry-run-app-id-00000000",
+                "password": "dry-run-password-DO-NOT-USE",
+                "tenant": "dry-run-tenant-00000000",
+            }
+        )
 
     if "acr create" in cmd:
         name = _arg("--name")
-        return json.dumps({
-            "id": f"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.ContainerRegistry/registries/{name}",
-            "loginServer": f"{name}.azurecr.io",
-            "name": name,
-        })
+        return json.dumps(
+            {
+                "id": f"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.ContainerRegistry/registries/{name}",
+                "loginServer": f"{name}.azurecr.io",
+                "name": name,
+            }
+        )
 
     if "aks create" in cmd:
         name = _arg("--name")
-        return json.dumps({
-            "name": name,
-            "kubernetesVersion": "1.29.0",
-            "nodeResourceGroup": f"MC_rg_{name}_region",
-        })
+        return json.dumps(
+            {
+                "name": name,
+                "kubernetesVersion": "1.29.0",
+                "nodeResourceGroup": f"MC_rg_{name}_region",
+            }
+        )
 
     if "storage account create" in cmd:
         name = _arg("--name")
-        return json.dumps({
-            "id": f"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/{name}",
-            "name": name,
-        })
+        return json.dumps(
+            {
+                "id": f"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/{name}",
+                "name": name,
+            }
+        )
 
     if "app-insights component create" in cmd:
-        return json.dumps({
-            "instrumentationKey": "dry-run-instrumentation-key",
-            "connectionString": "InstrumentationKey=dry-run-key;IngestionEndpoint=https://localhost",
-        })
+        return json.dumps(
+            {
+                "instrumentationKey": "dry-run-instrumentation-key",
+                "connectionString": "InstrumentationKey=dry-run-key;IngestionEndpoint=https://localhost",
+            }
+        )
 
     # Default: empty JSON object (safe for json.loads if needed)
     return json.dumps({})

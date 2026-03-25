@@ -157,25 +157,21 @@ class TestMainPipeline:
         stages = {s["stage"]: s for s in main_pipeline["stages"]}
         for stage_name in ("CD_Dev", "CD_Main"):
             condition = stages[stage_name]["condition"]
-            assert "Skipped" in condition, (
-                f"{stage_name} must allow TrainModel to be Skipped"
-            )
+            assert (
+                "Skipped" in condition
+            ), f"{stage_name} must allow TrainModel to be Skipped"
 
     def test_cd_stages_have_training_ran_variable(self, main_pipeline):
         """CD stages must define TRAINING_RAN to conditionally promote model."""
         stages = {s["stage"]: s for s in main_pipeline["stages"]}
         for stage_name in ("CD_Dev", "CD_Main"):
             text = yaml.dump(stages[stage_name])
-            assert "TRAINING_RAN" in text, (
-                f"{stage_name} missing TRAINING_RAN variable"
-            )
+            assert "TRAINING_RAN" in text, f"{stage_name} missing TRAINING_RAN variable"
 
     def test_variable_group_referenced(self, main_pipeline):
         """Pipeline must reference bank-marketing-vars variable group."""
         variables = main_pipeline.get("variables", [])
-        groups = [
-            v["group"] for v in variables if isinstance(v, dict) and "group" in v
-        ]
+        groups = [v["group"] for v in variables if isinstance(v, dict) and "group" in v]
         assert "bank-marketing-vars" in groups
 
     def test_ci_has_test_step(self, main_pipeline):
@@ -238,9 +234,9 @@ class TestMainPipeline:
         for stage_name in ("CD_Dev", "CD_Main"):
             text = yaml.dump(stages[stage_name])
             # YAML dump may wrap 'rollout restart' across lines; check both words
-            assert "rollout" in text and "restart" in text, (
-                f"{stage_name} missing rolling restart"
-            )
+            assert (
+                "rollout" in text and "restart" in text
+            ), f"{stage_name} missing rolling restart"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -251,8 +247,7 @@ class TestMainPipeline:
 class TestPRPipeline:
     def test_trigger_disabled(self, pr_pipeline):
         """PR pipeline should not trigger on push (trigger: none)."""
-        assert pr_pipeline.get(
-            "trigger") is None or pr_pipeline["trigger"] == "none"
+        assert pr_pipeline.get("trigger") is None or pr_pipeline["trigger"] == "none"
 
     def test_pr_branches(self, pr_pipeline):
         """PR pipeline triggers on PRs against dev and main."""
@@ -312,8 +307,10 @@ class TestPRPipeline:
 class TestRetrainPipeline:
     def test_trigger_disabled(self, retrain_pipeline):
         """Retrain pipeline must not trigger on pushes."""
-        assert retrain_pipeline.get(
-            "trigger") is None or retrain_pipeline["trigger"] == "none"
+        assert (
+            retrain_pipeline.get("trigger") is None
+            or retrain_pipeline["trigger"] == "none"
+        )
 
     def test_has_schedule(self, retrain_pipeline):
         """Retrain pipeline must have a scheduled trigger."""
@@ -330,8 +327,12 @@ class TestRetrainPipeline:
     def test_stage_order(self, retrain_pipeline):
         """Stages: Retrain → ValidateModel → DeployStaging → DeployProduction."""
         names = _get_stage_names(retrain_pipeline)
-        assert names == ["Retrain", "ValidateModel",
-                         "DeployStaging", "DeployProduction"]
+        assert names == [
+            "Retrain",
+            "ValidateModel",
+            "DeployStaging",
+            "DeployProduction",
+        ]
 
     def test_stage_dependencies(self, retrain_pipeline):
         """Each stage depends on its predecessor."""
@@ -415,9 +416,7 @@ class TestCrossPipelineConsistency:
         for pipeline in (main_pipeline, retrain_pipeline):
             variables = pipeline.get("variables", [])
             groups = [
-                v["group"]
-                for v in variables
-                if isinstance(v, dict) and "group" in v
+                v["group"] for v in variables if isinstance(v, dict) and "group" in v
             ]
             assert "bank-marketing-vars" in groups
 
@@ -478,7 +477,9 @@ class TestK8sPipelineAlignment:
             )
             assert backend == "azure_blob", f"{name}: STORAGE_BACKEND != azure_blob"
 
-    def test_k8s_manifests_referenced_in_pipelines(self, main_pipeline, retrain_pipeline):
+    def test_k8s_manifests_referenced_in_pipelines(
+        self, main_pipeline, retrain_pipeline
+    ):
         """Pipelines must reference the correct K8s manifest files."""
         main_text = _get_all_text(main_pipeline)
         retrain_text = _get_all_text(retrain_pipeline)

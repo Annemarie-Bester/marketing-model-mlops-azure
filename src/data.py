@@ -32,8 +32,9 @@ def load_data(config: dict, config_dir: str) -> pd.DataFrame:
     index_col = data_cfg.get("index_col", None)
 
     logger.info("Loading data from: %s", raw_path)
-    df = storage.read_csv(raw_path, config_dir=config_dir,
-                          sep=separator, index_col=index_col)
+    df = storage.read_csv(
+        raw_path, config_dir=config_dir, sep=separator, index_col=index_col
+    )
     logger.info("Loaded %d rows, %d columns", df.shape[0], df.shape[1])
 
     return df

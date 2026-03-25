@@ -61,8 +61,7 @@ def evaluate(pipeline: Pipeline, X_test, y_test, config: dict) -> dict:
     logger.info("F1 macro        : %.4f", f1_macro)
     logger.info(
         "Classification Report:\n%s",
-        classification_report(y_test, y_pred, target_names=[
-                              "no (0)", "yes (1)"]),
+        classification_report(y_test, y_pred, target_names=["no (0)", "yes (1)"]),
     )
 
     return metrics
@@ -83,12 +82,9 @@ def load_model(config: dict) -> Pipeline:
     """
     from src import storage
 
-    model_path = os.environ.get(
-        "MODEL_PATH", config["artifacts"]["model_path"]
-    )
+    model_path = os.environ.get("MODEL_PATH", config["artifacts"]["model_path"])
     config_dir = os.path.dirname(
-        os.path.abspath(os.path.join(
-            os.path.dirname(__file__), "..", "config.yaml"))
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
     )
     return storage.load_model(model_path, config_dir=config_dir)
 
@@ -110,8 +106,7 @@ def save_metrics(metrics: dict, config: dict) -> str:
     from src import storage
 
     config_dir = os.path.dirname(
-        os.path.abspath(os.path.join(
-            os.path.dirname(__file__), "..", "config.yaml"))
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
     )
     return storage.save_json(
         metrics, config["artifacts"]["metrics_path"], config_dir=config_dir

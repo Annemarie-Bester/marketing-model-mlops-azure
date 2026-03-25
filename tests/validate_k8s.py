@@ -1,4 +1,5 @@
 """Offline K8s manifest validation (structural checks)."""
+
 import os
 import sys
 
@@ -40,22 +41,23 @@ def validate_manifests():
                 for c in containers:
                     cname = c.get("name", "?")
                     if "resources" not in c:
-                        errors.append(
-                            f"{f}: container '{cname}' missing resources")
+                        errors.append(f"{f}: container '{cname}' missing resources")
                     if "livenessProbe" not in c:
-                        errors.append(
-                            f"{f}: container '{cname}' missing livenessProbe")
+                        errors.append(f"{f}: container '{cname}' missing livenessProbe")
                     if "readinessProbe" not in c:
                         errors.append(
-                            f"{f}: container '{cname}' missing readinessProbe")
+                            f"{f}: container '{cname}' missing readinessProbe"
+                        )
                     envs = [e["name"] for e in c.get("env", [])]
                     print(f"    env: {envs}")
 
             if kind == "Service":
                 svc_spec = doc.get("spec", {})
                 svc_type = svc_spec.get("type", "ClusterIP")
-                ports = [(p.get("port"), p.get("targetPort"))
-                         for p in svc_spec.get("ports", [])]
+                ports = [
+                    (p.get("port"), p.get("targetPort"))
+                    for p in svc_spec.get("ports", [])
+                ]
                 print(f"    type={svc_type}, ports={ports}")
 
     print()

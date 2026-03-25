@@ -52,14 +52,12 @@ def test_health(client):
 
 
 def test_predict_returns_200(client):
-    response = client.post(
-        "/predict", json=SAMPLE_REQUEST, headers=AUTH_HEADER)
+    response = client.post("/predict", json=SAMPLE_REQUEST, headers=AUTH_HEADER)
     assert response.status_code == 200
 
 
 def test_predict_response_shape(client):
-    response = client.post(
-        "/predict", json=SAMPLE_REQUEST, headers=AUTH_HEADER)
+    response = client.post("/predict", json=SAMPLE_REQUEST, headers=AUTH_HEADER)
     data = response.json()
     assert "prediction" in data
     assert "probability" in data
@@ -67,8 +65,7 @@ def test_predict_response_shape(client):
 
 
 def test_predict_values(client):
-    response = client.post(
-        "/predict", json=SAMPLE_REQUEST, headers=AUTH_HEADER)
+    response = client.post("/predict", json=SAMPLE_REQUEST, headers=AUTH_HEADER)
     data = response.json()
     assert data["prediction"] in (0, 1)
     assert 0.0 <= data["probability"] <= 1.0
@@ -76,8 +73,7 @@ def test_predict_values(client):
 
 
 def test_predict_label_matches_prediction(client):
-    response = client.post(
-        "/predict", json=SAMPLE_REQUEST, headers=AUTH_HEADER)
+    response = client.post("/predict", json=SAMPLE_REQUEST, headers=AUTH_HEADER)
     data = response.json()
     expected_label = "yes" if data["prediction"] == 1 else "no"
     assert data["label"] == expected_label
@@ -98,8 +94,9 @@ def test_predict_missing_api_key(client):
 
 def test_predict_wrong_api_key(client):
     """Request with incorrect API key should return 401."""
-    response = client.post("/predict", json=SAMPLE_REQUEST,
-                           headers={"X-API-Key": "wrong-key"})
+    response = client.post(
+        "/predict", json=SAMPLE_REQUEST, headers={"X-API-Key": "wrong-key"}
+    )
     assert response.status_code == 401
 
 

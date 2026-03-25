@@ -33,8 +33,7 @@ API_WORKERS = int(os.environ.get("UVICORN_WORKERS", "1"))
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH = os.path.join(os.path.dirname(
-    __file__), "..", "..", "config.yaml")
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "config.yaml")
 config = load_config(CONFIG_PATH)
 
 # --- Pydantic request/response schemas ---
@@ -105,8 +104,7 @@ def verify_api_key(x_api_key: Optional[str] = Header(default=None)):
     if not api_key:
         return
     if x_api_key != api_key:
-        raise HTTPException(
-            status_code=401, detail="Invalid or missing API key")
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 # --- App lifecycle: load model once at startup ---
@@ -143,7 +141,9 @@ def health():
     return {"status": "healthy"}
 
 
-@app.post("/predict", response_model=PredictResponse, dependencies=[Depends(verify_api_key)])
+@app.post(
+    "/predict", response_model=PredictResponse, dependencies=[Depends(verify_api_key)]
+)
 def predict(request: PredictRequest):
     """Score a single customer record.
 

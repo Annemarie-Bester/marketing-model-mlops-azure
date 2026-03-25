@@ -37,14 +37,16 @@ from src.infra import (
     upload_blob,
 )
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
 def _mock_result(stdout: str = "", stderr: str = "", returncode: int = 0):
     """Build a mock CompletedProcess."""
     return subprocess.CompletedProcess(
-        args=["az"], returncode=returncode, stdout=stdout, stderr=stderr,
+        args=["az"],
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
     )
 
 
@@ -63,7 +65,9 @@ class TestRunAz:
         run_az(["account", "show"])
         mock_run.assert_called_once_with(
             ["az", "account", "show"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
 
     @patch("src.infra.subprocess.run")
@@ -73,7 +77,9 @@ class TestRunAz:
         assert result.returncode == 1
         mock_run.assert_called_once_with(
             ["az", "fail"],
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
         )
 
 
@@ -84,7 +90,9 @@ class TestRunKubectl:
         run_kubectl(["get", "pods"])
         mock_run.assert_called_once_with(
             ["kubectl", "get", "pods"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
 
 
@@ -94,11 +102,13 @@ class TestRunKubectl:
 class TestLoginCheck:
     @patch("src.infra.run_az")
     def test_returns_account_dict(self, mock_az):
-        mock_az.return_value = _json_result({
-            "id": "sub-123",
-            "name": "Test Sub",
-            "user": {"name": "user@test.com", "type": "user"},
-        })
+        mock_az.return_value = _json_result(
+            {
+                "id": "sub-123",
+                "name": "Test Sub",
+                "user": {"name": "user@test.com", "type": "user"},
+            }
+        )
         account = login_check()
         assert account["id"] == "sub-123"
         assert account["user"]["name"] == "user@test.com"
@@ -110,9 +120,7 @@ class TestSetSubscription:
     def test_sets_subscription(self, mock_az):
         mock_az.return_value = _mock_result()
         set_subscription("sub-456")
-        mock_az.assert_called_once_with(
-            ["account", "set", "--subscription", "sub-456"]
-        )
+        mock_az.assert_called_once_with(["account", "set", "--subscription", "sub-456"])
 
 
 # ── Resource Group ───────────────────────────────────────────────────────
@@ -121,20 +129,28 @@ class TestSetSubscription:
 class TestCreateResourceGroup:
     @patch("src.infra.run_az")
     def test_creates_rg(self, mock_az):
-        mock_az.return_value = _json_result({
-            "id": "/subscriptions/sub/resourceGroups/rg-test",
-            "name": "rg-test",
-            "location": "eastus",
-        })
+        mock_az.return_value = _json_result(
+            {
+                "id": "/subscriptions/sub/resourceGroups/rg-test",
+                "name": "rg-test",
+                "location": "eastus",
+            }
+        )
         result = create_resource_group("rg-test", "eastus")
         info = json.loads(result.stdout)
         assert info["name"] == "rg-test"
-        mock_az.assert_called_once_with([
-            "group", "create",
-            "--name", "rg-test",
-            "--location", "eastus",
-            "-o", "json",
-        ])
+        mock_az.assert_called_once_with(
+            [
+                "group",
+                "create",
+                "--name",
+                "rg-test",
+                "--location",
+                "eastus",
+                "-o",
+                "json",
+            ]
+        )
 
 
 # ── Service Principal ───────────────────────────────────────────────────
@@ -143,29 +159,40 @@ class TestCreateResourceGroup:
 class TestCreateServicePrincipal:
     @patch("src.infra.run_az")
     def test_creates_sp_with_scope(self, mock_az):
-        mock_az.return_value = _json_result({
-            "appId": "app-123",
-            "password": "secret-pwd",
-            "tenant": "tenant-abc",
-        })
+        mock_az.return_value = _json_result(
+            {
+                "appId": "app-123",
+                "password": "secret-pwd",
+                "tenant": "tenant-abc",
+            }
+        )
         result = create_service_principal(
             "sp-test", role="Contributor", scope="/subscriptions/sub/resourceGroups/rg"
         )
         sp = json.loads(result.stdout)
         assert sp["appId"] == "app-123"
         assert sp["password"] == "secret-pwd"
-        mock_az.assert_called_once_with([
-            "ad", "sp", "create-for-rbac",
-            "--name", "sp-test",
-            "--role", "Contributor",
-            "--scopes", "/subscriptions/sub/resourceGroups/rg",
-            "-o", "json",
-        ])
+        mock_az.assert_called_once_with(
+            [
+                "ad",
+                "sp",
+                "create-for-rbac",
+                "--name",
+                "sp-test",
+                "--role",
+                "Contributor",
+                "--scopes",
+                "/subscriptions/sub/resourceGroups/rg",
+                "-o",
+                "json",
+            ]
+        )
 
     @patch("src.infra.run_az")
     def test_creates_sp_without_scope(self, mock_az):
         mock_az.return_value = _json_result(
-            {"appId": "a", "password": "p", "tenant": "t"})
+            {"appId": "a", "password": "p", "tenant": "t"}
+        )
         create_service_principal("sp-no-scope")
         args = mock_az.call_args[0][0]
         assert "--scopes" not in args
@@ -176,13 +203,21 @@ class TestAssignRole:
     def test_assigns_role(self, mock_az):
         mock_az.return_value = _mock_result()
         assign_role("app-123", "AcrPush", "/subscriptions/sub/acr")
-        mock_az.assert_called_once_with([
-            "role", "assignment", "create",
-            "--assignee", "app-123",
-            "--role", "AcrPush",
-            "--scope", "/subscriptions/sub/acr",
-            "-o", "json",
-        ])
+        mock_az.assert_called_once_with(
+            [
+                "role",
+                "assignment",
+                "create",
+                "--assignee",
+                "app-123",
+                "--role",
+                "AcrPush",
+                "--scope",
+                "/subscriptions/sub/acr",
+                "-o",
+                "json",
+            ]
+        )
 
 
 # ── ACR ──────────────────────────────────────────────────────────────────
@@ -191,21 +226,30 @@ class TestAssignRole:
 class TestCreateAcr:
     @patch("src.infra.run_az")
     def test_creates_acr(self, mock_az):
-        mock_az.return_value = _json_result({
-            "id": "/acr/test",
-            "loginServer": "testacr.azurecr.io",
-            "name": "testacr",
-        })
+        mock_az.return_value = _json_result(
+            {
+                "id": "/acr/test",
+                "loginServer": "testacr.azurecr.io",
+                "name": "testacr",
+            }
+        )
         result = create_acr("rg-test", "testacr")
         info = json.loads(result.stdout)
         assert info["loginServer"] == "testacr.azurecr.io"
-        mock_az.assert_called_once_with([
-            "acr", "create",
-            "--resource-group", "rg-test",
-            "--name", "testacr",
-            "--sku", "Basic",
-            "-o", "json",
-        ])
+        mock_az.assert_called_once_with(
+            [
+                "acr",
+                "create",
+                "--resource-group",
+                "rg-test",
+                "--name",
+                "testacr",
+                "--sku",
+                "Basic",
+                "-o",
+                "json",
+            ]
+        )
 
 
 # ── AKS ──────────────────────────────────────────────────────────────────
@@ -214,13 +258,14 @@ class TestCreateAcr:
 class TestCreateAks:
     @patch("src.infra.run_az")
     def test_creates_aks_with_acr(self, mock_az):
-        mock_az.return_value = _json_result({
-            "name": "test-aks",
-            "kubernetesVersion": "1.29.0",
-            "nodeResourceGroup": "MC_rg_test",
-        })
-        result = create_aks("rg-test", "test-aks",
-                            node_count=2, acr_name="testacr")
+        mock_az.return_value = _json_result(
+            {
+                "name": "test-aks",
+                "kubernetesVersion": "1.29.0",
+                "nodeResourceGroup": "MC_rg_test",
+            }
+        )
+        result = create_aks("rg-test", "test-aks", node_count=2, acr_name="testacr")
         info = json.loads(result.stdout)
         assert info["name"] == "test-aks"
         args = mock_az.call_args[0][0]
@@ -242,12 +287,17 @@ class TestGetAksCredentials:
     def test_downloads_credentials(self, mock_az):
         mock_az.return_value = _mock_result()
         get_aks_credentials("rg-test", "test-aks")
-        mock_az.assert_called_once_with([
-            "aks", "get-credentials",
-            "--resource-group", "rg-test",
-            "--name", "test-aks",
-            "--overwrite-existing",
-        ])
+        mock_az.assert_called_once_with(
+            [
+                "aks",
+                "get-credentials",
+                "--resource-group",
+                "rg-test",
+                "--name",
+                "test-aks",
+                "--overwrite-existing",
+            ]
+        )
 
 
 # ── Storage ──────────────────────────────────────────────────────────────
@@ -256,10 +306,12 @@ class TestGetAksCredentials:
 class TestCreateStorageAccount:
     @patch("src.infra.run_az")
     def test_creates_storage(self, mock_az):
-        mock_az.return_value = _json_result({
-            "id": "/sa/test",
-            "name": "teststorage",
-        })
+        mock_az.return_value = _json_result(
+            {
+                "id": "/sa/test",
+                "name": "teststorage",
+            }
+        )
         result = create_storage_account("teststorage", "rg-test", "eastus")
         info = json.loads(result.stdout)
         assert info["name"] == "teststorage"
@@ -273,13 +325,21 @@ class TestCreateBlobContainer:
     def test_creates_container(self, mock_az):
         mock_az.return_value = _mock_result()
         create_blob_container("teststorage", "training-data")
-        mock_az.assert_called_once_with([
-            "storage", "container", "create",
-            "--name", "training-data",
-            "--account-name", "teststorage",
-            "--auth-mode", "login",
-            "-o", "json",
-        ])
+        mock_az.assert_called_once_with(
+            [
+                "storage",
+                "container",
+                "create",
+                "--name",
+                "training-data",
+                "--account-name",
+                "teststorage",
+                "--auth-mode",
+                "login",
+                "-o",
+                "json",
+            ]
+        )
 
 
 class TestUploadBlob:
@@ -320,10 +380,12 @@ class TestEnableAksMonitoring:
 class TestCreateAppInsights:
     @patch("src.infra.run_az")
     def test_creates_app_insights(self, mock_az):
-        mock_az.return_value = _json_result({
-            "instrumentationKey": "key-123",
-            "connectionString": "InstrumentationKey=key-123;...",
-        })
+        mock_az.return_value = _json_result(
+            {
+                "instrumentationKey": "key-123",
+                "connectionString": "InstrumentationKey=key-123;...",
+            }
+        )
         result = create_app_insights("test-insights", "rg-test", "eastus")
         info = json.loads(result.stdout)
         assert info["instrumentationKey"] == "key-123"
@@ -338,7 +400,8 @@ class TestCreateK8sNamespace:
         mock_kubectl.return_value = _mock_result()
         result = create_k8s_namespace("bank-marketing")
         mock_kubectl.assert_called_once_with(
-            ["create", "namespace", "bank-marketing"], check=False,
+            ["create", "namespace", "bank-marketing"],
+            check=False,
         )
 
     @patch("src.infra.run_kubectl")
@@ -422,24 +485,31 @@ class TestNotebookFlowEndToEnd:
         call_count = {"n": 0}
         responses = [
             # login_check
-            _json_result({"id": "sub-123", "name": "Test",
-                         "user": {"name": "u@t.com"}}),
+            _json_result(
+                {"id": "sub-123", "name": "Test", "user": {"name": "u@t.com"}}
+            ),
             # set_subscription
             _mock_result(),
             # create_resource_group
             _json_result(
-                {"id": rg_id, "name": "rg-bank-marketing", "location": "eastus"}),
+                {"id": rg_id, "name": "rg-bank-marketing", "location": "eastus"}
+            ),
             # create_service_principal
-            _json_result(
-                {"appId": "app-sp", "password": "pwd", "tenant": "t"}),
+            _json_result({"appId": "app-sp", "password": "pwd", "tenant": "t"}),
             # create_acr
             _json_result(
-                {"id": acr_id, "loginServer": "testacr.azurecr.io", "name": "testacr"}),
+                {"id": acr_id, "loginServer": "testacr.azurecr.io", "name": "testacr"}
+            ),
             # assign_role (AcrPush)
             _mock_result(),
             # create_aks
             _json_result(
-                {"name": "test-aks", "kubernetesVersion": "1.29.0", "nodeResourceGroup": "MC"}),
+                {
+                    "name": "test-aks",
+                    "kubernetesVersion": "1.29.0",
+                    "nodeResourceGroup": "MC",
+                }
+            ),
             # get_aks_credentials
             _mock_result(),
             # create_storage_account
@@ -455,8 +525,7 @@ class TestNotebookFlowEndToEnd:
             # enable_aks_monitoring
             _mock_result(),
             # create_app_insights
-            _json_result({"instrumentationKey": "k",
-                         "connectionString": "cs"}),
+            _json_result({"instrumentationKey": "k", "connectionString": "cs"}),
             # create_acr_purge_task
             _mock_result(),
         ]
@@ -481,8 +550,7 @@ class TestNotebookFlowEndToEnd:
         rg_info = json.loads(rg_result.stdout)
         assert rg_info["id"] == rg_id
 
-        sp_result = create_service_principal(
-            "sp-test", role="Contributor", scope=rg_id)
+        sp_result = create_service_principal("sp-test", role="Contributor", scope=rg_id)
         sp_info = json.loads(sp_result.stdout)
         sp_app_id = sp_info["appId"]
         assert sp_app_id == "app-sp"
@@ -493,8 +561,7 @@ class TestNotebookFlowEndToEnd:
         assign_role(sp_app_id, "AcrPush", acr_info["id"])
 
         # Cell 4: AKS
-        aks_result = create_aks("rg-bank-marketing",
-                                "test-aks", acr_name="testacr")
+        aks_result = create_aks("rg-bank-marketing", "test-aks", acr_name="testacr")
         get_aks_credentials("rg-bank-marketing", "test-aks")
 
         # Cell 5: K8s namespaces (kubectl)
@@ -502,39 +569,45 @@ class TestNotebookFlowEndToEnd:
         create_k8s_namespace("bank-marketing-dev")
 
         # Cell 6: Storage
-        sa_result = create_storage_account(
-            "teststorage", "rg-bank-marketing", "eastus")
+        sa_result = create_storage_account("teststorage", "rg-bank-marketing", "eastus")
         sa_info = json.loads(sa_result.stdout)
         create_blob_container("teststorage", "training-data")
         create_blob_container("teststorage", "model-registry")
 
-        training_scope = f"{sa_info['id']}/blobServices/default/containers/training-data"
-        registry_scope = f"{sa_info['id']}/blobServices/default/containers/model-registry"
+        training_scope = (
+            f"{sa_info['id']}/blobServices/default/containers/training-data"
+        )
+        registry_scope = (
+            f"{sa_info['id']}/blobServices/default/containers/model-registry"
+        )
         assign_role(sp_app_id, "Storage Blob Data Reader", training_scope)
         assign_role(sp_app_id, "Storage Blob Data Contributor", registry_scope)
 
         # Cell 7: Monitoring
         enable_aks_monitoring("rg-bank-marketing", "test-aks")
-        ai_result = create_app_insights(
-            "test-insights", "rg-bank-marketing", "eastus")
+        ai_result = create_app_insights("test-insights", "rg-bank-marketing", "eastus")
         ai_info = json.loads(ai_result.stdout)
         assert ai_info["instrumentationKey"] == "k"
 
         # Cell 8: K8s secrets (kubectl)
         for ns in ["bank-marketing", "bank-marketing-dev"]:
-            create_k8s_secret("bank-marketing-api-key",
-                              ns, {"API_KEY": "test"})
-            create_k8s_secret("azure-storage", ns, {
-                "ACCOUNT_NAME": "teststorage",
-                "CONTAINER_NAME": "model-registry",
-            })
+            create_k8s_secret("bank-marketing-api-key", ns, {"API_KEY": "test"})
+            create_k8s_secret(
+                "azure-storage",
+                ns,
+                {
+                    "ACCOUNT_NAME": "teststorage",
+                    "CONTAINER_NAME": "model-registry",
+                },
+            )
 
         # Cell 9: ACR purge
         create_acr_purge_task("testacr")
 
         # Verify all az calls were made
-        assert call_count["n"] == len(responses), \
-            f"Expected {len(responses)} az calls, got {call_count['n']}"
+        assert call_count["n"] == len(
+            responses
+        ), f"Expected {len(responses)} az calls, got {call_count['n']}"
 
         # Verify kubectl calls: 2 namespaces + 4 secrets = 6
         assert mock_kubectl.call_count == 6
@@ -549,12 +622,12 @@ class TestDryRunMode:
     def _enable_dry_run(self, monkeypatch):
         """Enable dry-run mode on the infra module."""
         import src.infra
+
         monkeypatch.setattr(src.infra, "DRY_RUN", True)
 
     def test_run_az_returns_fake_result(self, monkeypatch):
         self._enable_dry_run(monkeypatch)
-        result = run_az(["group", "create", "--name",
-                        "rg", "--location", "eastus"])
+        result = run_az(["group", "create", "--name", "rg", "--location", "eastus"])
         assert result.returncode == 0
         assert result.args == ["dry-run"]
         data = json.loads(result.stdout)
@@ -636,9 +709,7 @@ class TestDryRunMode:
 
         # Resource Group + SP
         rg = json.loads(create_resource_group("rg-test", "eastus").stdout)
-        sp = json.loads(
-            create_service_principal("sp", scope=rg["id"]).stdout
-        )
+        sp = json.loads(create_service_principal("sp", scope=rg["id"]).stdout)
         sp_app_id = sp["appId"]
 
         # ACR
@@ -646,9 +717,7 @@ class TestDryRunMode:
         assign_role(sp_app_id, "AcrPush", acr["id"])
 
         # AKS
-        aks = json.loads(
-            create_aks("rg-test", "test-aks", acr_name="testacr").stdout
-        )
+        aks = json.loads(create_aks("rg-test", "test-aks", acr_name="testacr").stdout)
         get_aks_credentials("rg-test", "test-aks")
 
         # K8s
@@ -656,9 +725,7 @@ class TestDryRunMode:
         create_k8s_namespace("bank-marketing-dev")
 
         # Storage
-        sa = json.loads(
-            create_storage_account("mysa", "rg-test", "eastus").stdout
-        )
+        sa = json.loads(create_storage_account("mysa", "rg-test", "eastus").stdout)
         create_blob_container("mysa", "training-data")
         create_blob_container("mysa", "model-registry")
         assign_role(sp_app_id, "Storage Blob Data Reader", sa["id"])
@@ -666,9 +733,7 @@ class TestDryRunMode:
 
         # Monitoring
         enable_aks_monitoring("rg-test", "test-aks")
-        ai = json.loads(
-            create_app_insights("ai", "rg-test", "eastus").stdout
-        )
+        ai = json.loads(create_app_insights("ai", "rg-test", "eastus").stdout)
         assert ai["instrumentationKey"]
 
         # Secrets
