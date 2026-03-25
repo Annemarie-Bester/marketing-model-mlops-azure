@@ -9,7 +9,7 @@
   "remoteEnv": {
     "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
   },
-  "postCreateCommand": "pip install -r requirements-local.txt",
+  "postCreateCommand": "pip install -r requirements-local.txt && nbstripout --install",
   "forwardPorts": [
     8000,
     8888
