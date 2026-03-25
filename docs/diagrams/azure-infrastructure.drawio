@@ -1,83 +1,80 @@
-<mxfile host="app.diagrams.net" modified="2026-03-25T00:00:00.000Z" agent="" version="24.0.0" type="device">
-  <diagram id="azure-infrastructure" name="Azure Infrastructure">
-    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="600" math="0" shadow="0">
-      <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
-
-        <!-- Azure Subscription -->
-        <mxCell id="sub" value="&lt;b&gt;Azure Subscription&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;" vertex="1" parent="1">
-          <mxGeometry x="490" y="30" width="220" height="60" as="geometry" />
-        </mxCell>
-
-        <!-- Resource Group -->
-        <mxCell id="rg" value="&lt;b&gt;Resource Group&lt;/b&gt;&lt;br&gt;rg-bank-marketing&lt;br&gt;Region: South Africa North" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;" vertex="1" parent="1">
-          <mxGeometry x="440" y="150" width="320" height="70" as="geometry" />
-        </mxCell>
-
-        <!-- ACR -->
-        <mxCell id="acr" value="&lt;b&gt;Azure Container Registry&lt;/b&gt;&lt;br&gt;bankmarketingacr&lt;br&gt;SKU: Basic" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
-          <mxGeometry x="40" y="320" width="210" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="icon_acr" value="" style="shape=mxgraph.azure.container_registries;aspect=fixed;" vertex="1" parent="acr">
-          <mxGeometry x="178" y="4" width="24" height="24" as="geometry" />
-        </mxCell>
-
-        <!-- AKS -->
-        <mxCell id="aks" value="&lt;b&gt;Azure Kubernetes Service&lt;/b&gt;&lt;br&gt;bank-marketing-aks&lt;br&gt;2 nodes · Standard_B2s" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
-          <mxGeometry x="290" y="320" width="230" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="icon_aks" value="" style="shape=mxgraph.azure.kubernetes_services;aspect=fixed;" vertex="1" parent="aks">
-          <mxGeometry x="198" y="4" width="24" height="24" as="geometry" />
-        </mxCell>
-
-        <!-- Blob Storage -->
-        <mxCell id="blob" value="&lt;b&gt;Azure Blob Storage&lt;/b&gt;&lt;br&gt;Model Registry + Training Data" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
-          <mxGeometry x="560" y="310" width="210" height="90" as="geometry" />
-        </mxCell>
-
-        <!-- Azure Monitor -->
-        <mxCell id="mon" value="&lt;b&gt;Azure Monitor&lt;/b&gt;&lt;br&gt;(AKS monitoring addon)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
-          <mxGeometry x="810" y="320" width="210" height="70" as="geometry" />
-        </mxCell>
-
-        <!-- Application Insights -->
-        <mxCell id="ai" value="&lt;b&gt;Application Insights&lt;/b&gt;&lt;br&gt;bank-marketing-insights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
-          <mxGeometry x="1060" y="320" width="210" height="70" as="geometry" />
-        </mxCell>
-
-        <!-- Edge: Subscription → Resource Group -->
-        <mxCell id="e_sub_rg" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="sub" target="rg" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- Edges: Resource Group → all resources -->
-        <mxCell id="e_rg_acr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="rg" target="acr" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e_rg_aks" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="rg" target="aks" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e_rg_blob" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="rg" target="blob" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e_rg_mon" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="rg" target="mon" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e_rg_ai" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" source="rg" target="ai" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- Relationship: ACR ─── AKS (no arrows) -->
-        <mxCell id="e_acr_aks" value="AcrPull role (--attach-acr)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=none;startArrow=none;fontStyle=2;fontSize=10;" edge="1" source="acr" target="aks" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- Relationship: Blob ─── AKS (no arrows) -->
-        <mxCell id="e_blob_aks" value="model.pkl at startup" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=none;startArrow=none;fontStyle=2;fontSize=10;" edge="1" source="blob" target="aks" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-      </root>
-    </mxGraphModel>
-  </diagram>
+<mxfile host="65bd71144e">
+    <diagram id="azure-infrastructure" name="Azure Infrastructure">
+        <mxGraphModel dx="2800" dy="804" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="600" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="sub" value="&lt;b&gt;Azure Subscription&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="490" y="30" width="220" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="rg" value="&lt;b&gt;Resource Group&lt;/b&gt;&lt;br&gt;rg-bank-marketing&lt;br&gt;Region: South Africa North" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;" parent="1" vertex="1">
+                    <mxGeometry x="440" y="150" width="320" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="acr" value="&lt;b&gt;Azure Container Registry&lt;/b&gt;&lt;br&gt;bankmarketingacr&lt;br&gt;SKU: Basic" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+                    <mxGeometry x="-100" y="440" width="210" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="aks" value="&lt;b&gt;Azure Kubernetes Service&lt;/b&gt;&lt;br&gt;bank-marketing-aks&lt;br&gt;2 nodes · Standard_B2s" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+                    <mxGeometry x="270" y="440" width="230" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="blob" value="&lt;b&gt;Azure Blob Storage&lt;/b&gt;&lt;br&gt;Model Registry + Training Data" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+                    <mxGeometry x="630" y="430" width="210" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="mon" value="&lt;b&gt;Azure Monitor&lt;/b&gt;&lt;br&gt;(AKS monitoring addon)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="396.4" width="210" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="ai" value="&lt;b&gt;Application Insights&lt;/b&gt;&lt;br&gt;bank-marketing-insights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+                    <mxGeometry x="1050" y="260" width="210" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_sub_rg" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" parent="1" source="sub" target="rg" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_rg_acr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" parent="1" source="rg" target="acr" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_rg_aks" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" parent="1" source="rg" target="aks" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="600" y="320"/>
+                            <mxPoint x="385" y="320"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_rg_blob" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" parent="1" source="rg" target="blob" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="600" y="320"/>
+                            <mxPoint x="735" y="320"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_rg_mon" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" parent="1" source="rg" target="mon" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_rg_ai" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" parent="1" source="rg" target="ai" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_acr_aks" value="AcrPull role (--attach-acr)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=none;startArrow=none;fontStyle=2;fontSize=10;" parent="1" source="acr" target="aks" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_blob_aks" value="model.pkl at startup" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=none;startArrow=none;fontStyle=2;fontSize=10;" parent="1" source="blob" target="aks" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="2" value="" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=12;image=img/lib/azure2/devops/Application_Insights.svg;" vertex="1" parent="1">
+                    <mxGeometry x="1220" y="237" width="44" height="63" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=12;image=img/lib/azure2/other/AKS_Automatic.svg;" vertex="1" parent="1">
+                    <mxGeometry x="460" y="390" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="4" value="" style="points=[];aspect=fixed;html=1;align=center;shadow=0;dashed=0;fillColor=#FF6A00;strokeColor=none;shape=mxgraph.alibaba_cloud.acr_cloud_container_registry;" vertex="1" parent="1">
+                    <mxGeometry x="80" y="410" width="48.6" height="56.4" as="geometry"/>
+                </mxCell>
+                <mxCell id="5" value="" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=12;image=img/lib/azure2/management_governance/Monitor.svg;" vertex="1" parent="1">
+                    <mxGeometry x="1070" y="376" width="54" height="54" as="geometry"/>
+                </mxCell>
+                <mxCell id="7" value="" style="image;sketch=0;aspect=fixed;html=1;points=[];align=center;fontSize=12;image=img/lib/mscae/BlobBlock.svg;" vertex="1" parent="1">
+                    <mxGeometry x="790" y="420" width="66.67" height="56" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
 </mxfile>

@@ -1,90 +1,73 @@
-<mxfile host="app.diagrams.net" modified="2026-03-25T00:00:00.000Z" agent="" version="24.0.0" type="device">
-  <diagram id="branch-model" name="Branch Model">
-    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="600" math="0" shadow="0">
-      <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
-
-        <!-- Branch labels (left side) -->
-        <mxCell id="lbl_main" value="&lt;b&gt;main&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="30" y="62" width="100" height="36" as="geometry" />
-        </mxCell>
-        <mxCell id="lbl_dev" value="&lt;b&gt;dev&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="1">
-          <mxGeometry x="30" y="202" width="100" height="36" as="geometry" />
-        </mxCell>
-        <mxCell id="lbl_feat" value="&lt;b&gt;feature/api&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="20" y="342" width="120" height="36" as="geometry" />
-        </mxCell>
-        <mxCell id="lbl_rel" value="&lt;b&gt;release/1.0&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="20" y="482" width="120" height="36" as="geometry" />
-        </mxCell>
-
-        <!-- Commits on main -->
-        <mxCell id="c_init" value="init" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="200" y="62" width="80" height="36" as="geometry" />
-        </mxCell>
-        <mxCell id="c_v100" value="v1.0.0" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="960" y="62" width="80" height="36" as="geometry" />
-        </mxCell>
-        <!-- Tag label -->
-        <mxCell id="tag_v100" value="TAG: v1.0.0" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontColor=#b85450;fontStyle=3;" vertex="1" parent="1">
-          <mxGeometry x="955" y="28" width="90" height="30" as="geometry" />
-        </mxCell>
-
-        <!-- Commits on dev -->
-        <mxCell id="c_pv1" value="pipeline-v1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="340" y="202" width="100" height="36" as="geometry" />
-        </mxCell>
-        <mxCell id="c_merge_api" value="merge-api" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="620" y="202" width="100" height="36" as="geometry" />
-        </mxCell>
-        <mxCell id="c_bm" value="back-merge" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="920" y="202" width="110" height="36" as="geometry" />
-        </mxCell>
-
-        <!-- Commit on feature/api -->
-        <mxCell id="c_fa" value="fastapi-app" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="480" y="342" width="100" height="36" as="geometry" />
-        </mxCell>
-
-        <!-- Commit on release/1.0 -->
-        <mxCell id="c_stab" value="stabilise" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="780" y="482" width="100" height="36" as="geometry" />
-        </mxCell>
-
-        <!-- Horizontal branch lines (same-branch connectors, no arrows) -->
-        <mxCell id="h_main" style="rounded=0;endArrow=none;startArrow=none;strokeColor=#6c8ebf;strokeWidth=2;" edge="1" source="c_init" target="c_v100" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="h_dev1" style="rounded=0;endArrow=none;startArrow=none;strokeColor=#82b366;strokeWidth=2;" edge="1" source="c_pv1" target="c_merge_api" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="h_dev2" style="rounded=0;endArrow=none;startArrow=none;strokeColor=#82b366;strokeWidth=2;" edge="1" source="c_merge_api" target="c_bm" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- Branch creation arrows (dashed) -->
-        <mxCell id="br_main_dev" style="rounded=1;dashed=1;endArrow=classic;strokeColor=#82b366;" edge="1" source="c_init" target="c_pv1" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="br_dev_feat" style="rounded=1;dashed=1;endArrow=classic;strokeColor=#666666;" edge="1" source="c_pv1" target="c_fa" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="br_dev_rel" style="rounded=1;dashed=1;endArrow=classic;strokeColor=#b85450;" edge="1" source="c_merge_api" target="c_stab" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <!-- Merge arrows (solid, thicker) -->
-        <mxCell id="mg_feat_dev" style="rounded=1;endArrow=classic;strokeColor=#82b366;strokeWidth=2;" edge="1" source="c_fa" target="c_merge_api" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="mg_rel_main" style="rounded=1;endArrow=classic;strokeColor=#6c8ebf;strokeWidth=2;" edge="1" source="c_stab" target="c_v100" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="mg_rel_dev" style="rounded=1;endArrow=classic;strokeColor=#82b366;strokeWidth=2;" edge="1" source="c_stab" target="c_bm" parent="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-      </root>
-    </mxGraphModel>
-  </diagram>
+<mxfile host="65bd71144e">
+    <diagram id="branch-model" name="Branch Model">
+        <mxGraphModel dx="673" dy="644" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="600" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="lbl_main" value="&lt;b&gt;main&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="30" y="62" width="100" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="lbl_dev" value="&lt;b&gt;dev&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="30" y="202" width="100" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="lbl_feat" value="&lt;b&gt;feature/api&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="342" width="120" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="lbl_rel" value="&lt;b&gt;release/1.0&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="482" width="120" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="c_init" value="init" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="200" y="62" width="80" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="c_v100" value="v1.0.0" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="960" y="62" width="80" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="tag_v100" value="TAG: v1.0.0" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontColor=#b85450;fontStyle=3;" parent="1" vertex="1">
+                    <mxGeometry x="955" y="28" width="90" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="c_pv1" value="pipeline-v1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="340" y="202" width="100" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="c_merge_api" value="merge-api" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="620" y="202" width="100" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="c_bm" value="back-merge" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="780" y="202" width="110" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="c_fa" value="fastapi-app" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="480" y="342" width="100" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="c_stab" value="stabilise" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="780" y="482" width="100" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="h_main" style="rounded=0;endArrow=none;startArrow=none;strokeColor=#6c8ebf;strokeWidth=2;" parent="1" source="c_init" target="c_v100" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="h_dev1" style="rounded=0;endArrow=none;startArrow=none;strokeColor=#82b366;strokeWidth=2;" parent="1" source="c_pv1" target="c_merge_api" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="h_dev2" style="rounded=0;endArrow=none;startArrow=none;strokeColor=#82b366;strokeWidth=2;" parent="1" source="c_merge_api" target="c_bm" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="br_main_dev" style="rounded=1;dashed=1;endArrow=classic;strokeColor=#82b366;" parent="1" source="c_init" target="c_pv1" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="br_dev_feat" style="rounded=1;dashed=1;endArrow=classic;strokeColor=#666666;" parent="1" source="c_pv1" target="c_fa" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="br_dev_rel" style="rounded=1;dashed=1;endArrow=classic;strokeColor=#b85450;" parent="1" source="c_merge_api" target="c_stab" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="mg_feat_dev" style="rounded=1;endArrow=classic;strokeColor=#82b366;strokeWidth=2;" parent="1" source="c_fa" target="c_merge_api" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="mg_rel_main" style="rounded=1;endArrow=classic;strokeColor=#6c8ebf;strokeWidth=2;" parent="1" source="c_stab" target="c_v100" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="mg_rel_dev" style="rounded=1;endArrow=classic;strokeColor=#82b366;strokeWidth=2;" parent="1" source="c_stab" target="c_bm" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
 </mxfile>
