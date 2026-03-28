@@ -114,7 +114,9 @@ def split_data(
     """Split the cleaned DataFrame into stratified train/test sets.
 
     Stratified split ensures both sets reflect the original class distribution,
-    which is important given the 7.6:1 class imbalance in this dataset.
+    which is important for imbalanced classification problems.
+
+    Split parameters (test_size, random_state) are read from config.model.
 
     Args:
         df: Cleaned DataFrame from clean_data().

@@ -25,6 +25,8 @@ from sklearn.metrics import (
 )
 from sklearn.pipeline import Pipeline
 
+from src.config import get_config_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -61,31 +63,45 @@ def evaluate(pipeline: Pipeline, X_test, y_test, config: dict) -> dict:
     logger.info("F1 macro        : %.4f", f1_macro)
     logger.info(
         "Classification Report:\n%s",
-        classification_report(y_test, y_pred, target_names=["no (0)", "yes (1)"]),
+        classification_report(y_test, y_pred, target_names=[
+                              "no (0)", "yes (1)"]),
     )
 
     return metrics
 
 
-def load_model(config: dict) -> Pipeline:
-    """Load a trained pipeline artifact from disk or cloud storage.
+def get_model_path(config: dict) -> str:
+    """Resolve the model artifact path.
 
-    The model path is resolved in this order:
-        1. MODEL_PATH env var (allows runtime override without config change)
+    Resolution order:
+        1. MODEL_PATH env var (runtime override — useful for staging/prod switching)
         2. config["artifacts"]["model_path"] from config.yaml
 
     Args:
         config: Full parsed config dict.
 
     Returns:
-        Fitted sklearn Pipeline loaded from the artifact path in config.
+        Resolved model path string.
+    """
+    return os.environ.get("MODEL_PATH", config["artifacts"]["model_path"])
+
+
+def load_model(config: dict) -> Pipeline:
+    """Load a trained pipeline artifact from disk or cloud storage.
+
+    Uses get_model_path() to resolve the artifact location, then delegates
+    to the storage module so this works on local disk or Azure Blob.
+
+    Args:
+        config: Full parsed config dict.
+
+    Returns:
+        Fitted sklearn Pipeline loaded from the resolved artifact path.
     """
     from src import storage
 
-    model_path = os.environ.get("MODEL_PATH", config["artifacts"]["model_path"])
-    config_dir = os.path.dirname(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
-    )
+    model_path = get_model_path(config)
+    config_dir = os.path.dirname(get_config_path())
     return storage.load_model(model_path, config_dir=config_dir)
 
 
@@ -105,9 +121,7 @@ def save_metrics(metrics: dict, config: dict) -> str:
     """
     from src import storage
 
-    config_dir = os.path.dirname(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
-    )
+    config_dir = os.path.dirname(get_config_path())
     return storage.save_json(
         metrics, config["artifacts"]["metrics_path"], config_dir=config_dir
     )

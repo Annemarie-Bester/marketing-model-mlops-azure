@@ -13,7 +13,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 
-from src.evaluate import evaluate, load_model, save_metrics
+from src.evaluate import evaluate, get_model_path, load_model, save_metrics
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -73,6 +73,18 @@ def test_evaluate_metrics_are_rounded():
     for key in ("roc_auc", "f1_minority_class", "f1_macro"):
         val = metrics[key]
         assert round(val, 4) == val, f"{key} not rounded to 4dp: {val}"
+
+
+# ── Tests: get_model_path() ─────────────────────────────────────────────────
+
+
+def test_get_model_path_uses_config_by_default():
+    assert get_model_path(_CONFIG) == "artifacts/model.pkl"
+
+
+def test_get_model_path_env_overrides_config(monkeypatch):
+    monkeypatch.setenv("MODEL_PATH", "artifacts/custom_model.pkl")
+    assert get_model_path(_CONFIG) == "artifacts/custom_model.pkl"
 
 
 # ── Tests: load_model() ──────────────────────────────────────────────────────

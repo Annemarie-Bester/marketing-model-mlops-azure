@@ -17,8 +17,9 @@ The fastest way to work through local development is to run the notebooks in `no
 | [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) | Docker access, image build, container smoke tests, edge cases | §7, §8, §9 |
 | [notebooks/05_kubernetes_setup.ipynb](../notebooks/05_kubernetes_setup.ipynb) | kubectl/kind install, cluster bootstrap, manifest validation, deploy to both namespaces, CD_Dev simulation | §6, §10 |
 | [notebooks/06_cleanup.ipynb](../notebooks/06_cleanup.ipynb) | Remove all local resources (container, image, kind cluster, artifacts, binaries) | — |
+| [notebooks/08_prediction_testing.ipynb](../notebooks/08_prediction_testing.ipynb) | FastAPI health checks, single-record predict, batch predict, edge cases, full API test suite, individual test groups | §8, §9 |
 
-Run notebooks in order: `01` → `02` → `03` → `04` → `05`. Run `06` to tear everything down. The reference commands in the sections below remain the authoritative source; the notebooks simply provide an interactive execution layer on top.
+Run notebooks in order: `01` → `02` → `03` → `04` → `05`. Run `06` to tear everything down. Run `08` to exercise the prediction API interactively. The reference commands in the sections below remain the authoritative source; the notebooks simply provide an interactive execution layer on top.
 
 ---
 
@@ -79,6 +80,39 @@ pip install -r requirements-local.txt
 ```
 
 This installs the full development environment — `requirements.txt` (core ML), `requirements-infer.txt` (inference/API), plus dev tools like pytest, jupyter, and matplotlib.
+
+### Requirements file roles
+
+| File | Used by | Contents |
+|---|---|---|
+| `requirements.txt` | `Dockerfile.train`, CI pip-audit | Core ML — pandas, scikit-learn, numpy, joblib, pyyaml, azure-storage-blob |
+| `requirements-infer.txt` | `Dockerfile.infer`, CI pip-audit | Inference API — fastapi, uvicorn, pydantic + subset of ML deps |
+| `requirements-local.txt` | Dev Container `postCreateCommand`, CI install step | `-r requirements.txt` + `-r requirements-infer.txt` + dev tools (pytest, jupyter, black) |
+
+### Updating dependencies
+
+Files are manually maintained with **pinned versions** — this ensures the training image, inference image, and CI all use identical library versions.
+
+To add or upgrade a package:
+
+1. Install and test locally:
+   ```bash
+   pip install <package>==<version>
+   ```
+2. Add the pinned line to the appropriate file:
+   - Training/pipeline dependency → `requirements.txt`
+   - Inference/API dependency → `requirements-infer.txt`
+   - Dev/test-only tool → `requirements-local.txt` (direct entry, not via `-r`)
+3. Re-install to pick up the change:
+   ```bash
+   pip install -r requirements-local.txt
+   ```
+4. Run the test suite to confirm nothing breaks:
+   ```bash
+   pytest tests/
+   ```
+
+> **CI will fail** if `requirements.txt` or `requirements-infer.txt` contain packages with known CVEs — a `pip-audit` step runs on every PR and push to `main`.
 
 Key packages:
 | Package | Purpose |
@@ -153,7 +187,60 @@ python main.py predict --input data/raw/bank_marketing_data.csv --output data/re
 
 ---
 
-## 5. Run Tests with pytest
+## 5. Environment Variables
+
+All environment variables have safe defaults for local development. Override them when switching backends or running in CI/CD.
+
+> **Local vs Cloud:** In the CI/CD pipeline, the training job always runs against the local filesystem (`STORAGE_BACKEND=local`). Trained artifacts are then uploaded to Blob Storage via the `az` CLI — not through the Python storage module. `STORAGE_BACKEND=azure_blob` is set only by the **inference pod** (via [k8s/deployment.yaml](../k8s/deployment.yaml)) so it can pull `model.pkl` from Blob at startup. Cloud pipeline variables are managed in the `bank-marketing-vars` variable group in Azure DevOps — not set here.
+
+### Storage backend
+
+| Variable | Default | Scope | Purpose |
+|---|---|---|---|
+| `STORAGE_BACKEND` | `local` | Local + inference pod | `local` for filesystem; `azure_blob` for Blob Storage. CI training always uses `local`. |
+| `AZURE_STORAGE_CONNECTION_STRING` | _(unset)_ | Local dev only | Blob auth — takes priority over managed identity. Use this when testing blob reads/writes locally. |
+| `AZURE_STORAGE_ACCOUNT_NAME` | _(unset)_ | AKS inference pod | Blob auth for pods using AKS managed identity. Set via K8s secret in `deployment.yaml`. |
+| `AZURE_STORAGE_CONTAINER` | _(unset)_ | Local + inference pod | Blob container name — required when `STORAGE_BACKEND=azure_blob`. |
+| `MODEL_BLOB_PREFIX` | _(unset)_ | Inference pod | Prefix for blob model path. `staging` → `staging/artifacts/model.pkl`; `production` → `production/artifacts/model.pkl`. Set in `deployment.yaml`. |
+
+**Local development (default — no config needed):**
+```bash
+python main.py train   # reads/writes to artifacts/ on local filesystem
+```
+
+**Test local code against Azure Blob Storage** (e.g. verifying blob reads work before deploying):
+```bash
+export STORAGE_BACKEND=azure_blob
+export AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;..."
+export AZURE_STORAGE_CONTAINER=mlops-artifacts
+python main.py train
+```
+
+> **In the CI/CD pipeline**, the training stage does not set `STORAGE_BACKEND`. It trains with `STORAGE_BACKEND=local` (default) and uploads artifacts to Blob Storage using `az storage blob upload`. Only the inference pod (`k8s/deployment.yaml`) sets `STORAGE_BACKEND=azure_blob`.
+
+### Model path override
+
+| Variable | Default | Scope | Purpose |
+|---|---|---|---|
+| `MODEL_PATH` | value from `config.yaml` `artifacts.model_path` | Local dev only | Override the model artifact path locally without editing config. Not used in cloud — `MODEL_BLOB_PREFIX` handles staging/production path separation in AKS. |
+
+Useful locally for pointing at a specific artifact version:
+```bash
+export MODEL_PATH=artifacts/model_v2.pkl
+python -m uvicorn src.api.app:app
+```
+
+### API server settings
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `API_HOST` | `0.0.0.0` | Bind address for the FastAPI server |
+| `API_PORT` | `8000` | Port the server listens on |
+| `UVICORN_WORKERS` | `1` | Number of uvicorn worker processes |
+
+---
+
+## 6. Run Tests with pytest
 
 > **Notebook:** [notebooks/03_ml_pipeline.ipynb](../notebooks/03_ml_pipeline.ipynb) — Sections 4–5 run the full test suite and individual test modules. Section 6 provides direct model inference for debugging.
 
@@ -191,7 +278,7 @@ python -m pytest tests/test_api.py -v
 
 ---
 
-## 6. Validate K8s Manifests (kubeconform)
+## 7. Validate K8s Manifests (kubeconform)
 
 > **Notebook:** [notebooks/05_kubernetes_setup.ipynb](../notebooks/05_kubernetes_setup.ipynb) — Section 5 installs kubeconform and validates all `k8s/` manifests.
 
@@ -237,7 +324,7 @@ Summary: 2 resources found parsing k8s/ - Valid: 2, Invalid: 0, Errors: 0, Skipp
 
 ---
 
-## 7. Set Up Docker Locally
+## 8. Set Up Docker Locally
 
 > **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Section 1 verifies Docker access and troubleshoots common issues.
 
@@ -263,7 +350,7 @@ docker ps
 
 ---
 
-## 8. Docker Build
+## 9. Docker Build
 
 > **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 2–6 build and test the training container; Sections 7–13 build and test the inference container.
 
@@ -354,7 +441,7 @@ docker images | grep bank-marketing
 
 ---
 
-## 9. Local Container Smoke Test
+## 10. Local Container Smoke Test
 
 > **Notebook:** [notebooks/04_docker_testing.ipynb](../notebooks/04_docker_testing.ipynb) — Sections 8–13 run the inference container, health check, prediction tests, edge cases, scripted pass/fail smoke test, log inspection, and cleanup.
 
@@ -452,7 +539,7 @@ docker stop smoke-test && docker rm smoke-test
 
 ---
 
-## 10. Local Kubernetes Setup
+## 11. Local Kubernetes Setup
 
 > **Notebook:** [notebooks/05_kubernetes_setup.ipynb](../notebooks/05_kubernetes_setup.ipynb) — run top-to-bottom to install kubectl/kind, bootstrap the cluster, deploy to both namespaces, validate the ResourceQuota, and simulate the CD_Dev smoke test.
 
@@ -561,25 +648,41 @@ kubectl create secret generic bank-marketing-api-key \
 kubectl create secret generic bank-marketing-api-key \
   --from-literal=API_KEY=test-local-key -n bank-marketing-dev
 
+# Create dummy azure-storage secret in production namespace
+# (deployment.yaml references this for AKS managed identity — kind doesn't need real values)
+kubectl create secret generic azure-storage \
+  --from-literal=ACCOUNT_NAME=dummy \
+  --from-literal=CONTAINER_NAME=dummy \
+  -n bank-marketing
+
+# Copy model artifact to the kind node (inference image loads it via hostPath at /app/artifacts)
+docker exec bm-local-control-plane mkdir -p /tmp/bank-marketing/artifacts
+cat artifacts/model.pkl | docker exec -i bm-local-control-plane \
+  sh -c "cat > /tmp/bank-marketing/artifacts/model.pkl"
+
 # --- Production namespace ---
 # Apply manifests, then immediately scale to 0 to prevent stuck ACR-image pods
 kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -n bank-marketing
 kubectl scale deployment/bank-marketing-api --replicas=0 -n bank-marketing
 
-# Override the ACR image and remove imagePullSecrets in a single strategic-merge patch
-# (acr-secret doesn't exist in kind — it's created by CI/CD on AKS)
-# Strategic merge is idempotent: "imagePullSecrets: null" is a safe no-op if the field
-# is already absent, and the container image merges by the "name" key.
-kubectl patch deployment bank-marketing-api -n bank-marketing --type=strategic -p '
-spec:
-  template:
-    spec:
-      imagePullSecrets: null
-      containers:
-        - name: api
-          image: bank-marketing-api:local
-          imagePullPolicy: Never
-'
+# JSON patch: override image, set STORAGE_BACKEND=local (not azure_blob),
+# add hostPath volume mount for model.pkl, remove imagePullSecrets
+kubectl patch deployment bank-marketing-api -n bank-marketing --type=json -p '[
+  {"op": "replace", "path": "/spec/template/spec/containers/0/image", "value": "bank-marketing-api:local"},
+  {"op": "add", "path": "/spec/template/spec/containers/0/imagePullPolicy", "value": "Never"},
+  {"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": [
+    {"name": "UVICORN_WORKERS", "value": "1"},
+    {"name": "API_KEY", "valueFrom": {"secretKeyRef": {"name": "bank-marketing-api-key", "key": "API_KEY"}}},
+    {"name": "STORAGE_BACKEND", "value": "local"}
+  ]},
+  {"op": "add", "path": "/spec/template/spec/containers/0/volumeMounts", "value": [
+    {"name": "model-artifacts", "mountPath": "/app/artifacts", "readOnly": true}
+  ]},
+  {"op": "add", "path": "/spec/template/spec/volumes", "value": [
+    {"name": "model-artifacts", "hostPath": {"path": "/tmp/bank-marketing/artifacts", "type": "DirectoryOrCreate"}}
+  ]},
+  {"op": "remove", "path": "/spec/template/spec/imagePullSecrets"}
+]'
 
 # Scale back up — pods start with the correct local image from the outset
 kubectl scale deployment/bank-marketing-api --replicas=2 -n bank-marketing
@@ -590,17 +693,23 @@ kubectl apply -f k8s/quota-dev.yaml -n bank-marketing-dev
 kubectl apply -f k8s/deployment-dev.yaml -f k8s/service-dev.yaml -n bank-marketing-dev
 kubectl scale deployment/bank-marketing-api --replicas=0 -n bank-marketing-dev
 
-# Override the ACR image (dev deployment has no imagePullSecrets to remove,
-# but including "imagePullSecrets: null" is harmless with strategic merge)
-kubectl patch deployment bank-marketing-api -n bank-marketing-dev --type=strategic -p '
-spec:
-  template:
-    spec:
-      containers:
-        - name: api
-          image: bank-marketing-api:local
-          imagePullPolicy: Never
-'
+# Same JSON patch for staging (dev manifest also references azure-storage and imagePullSecrets)
+kubectl patch deployment bank-marketing-api -n bank-marketing-dev --type=json -p '[
+  {"op": "replace", "path": "/spec/template/spec/containers/0/image", "value": "bank-marketing-api:local"},
+  {"op": "add", "path": "/spec/template/spec/containers/0/imagePullPolicy", "value": "Never"},
+  {"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": [
+    {"name": "UVICORN_WORKERS", "value": "1"},
+    {"name": "API_KEY", "valueFrom": {"secretKeyRef": {"name": "bank-marketing-api-key", "key": "API_KEY"}}},
+    {"name": "STORAGE_BACKEND", "value": "local"}
+  ]},
+  {"op": "add", "path": "/spec/template/spec/containers/0/volumeMounts", "value": [
+    {"name": "model-artifacts", "mountPath": "/app/artifacts", "readOnly": true}
+  ]},
+  {"op": "add", "path": "/spec/template/spec/volumes", "value": [
+    {"name": "model-artifacts", "hostPath": {"path": "/tmp/bank-marketing/artifacts", "type": "DirectoryOrCreate"}}
+  ]},
+  {"op": "remove", "path": "/spec/template/spec/imagePullSecrets"}
+]'
 
 # Scale back up
 kubectl scale deployment/bank-marketing-api --replicas=1 -n bank-marketing-dev
@@ -733,7 +842,7 @@ kubectl config use-context kind-bm-local
 
 ---
 
-## 11. Local Inference Call Tests
+## 12. Local Inference Call Tests
 
 > **Notebook:** [notebooks/03_ml_pipeline.ipynb](../notebooks/03_ml_pipeline.ipynb) — Section 6 tests direct model inference without starting the API server. For full API inference over HTTP, use `04_docker_testing.ipynb`.
 

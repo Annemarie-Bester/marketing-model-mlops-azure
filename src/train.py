@@ -22,6 +22,8 @@ import os
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
+from src.config import get_config_path
+
 logger = logging.getLogger(__name__)
 
 # Registry of supported models.
@@ -114,10 +116,7 @@ def save_model(pipeline: Pipeline, config: dict) -> str:
     """
     from src import storage
 
-    config_dir = os.path.dirname(
-        os.path.abspath(os.path.join(
-            os.path.dirname(__file__), "..", "config.yaml"))
-    )
+    config_dir = os.path.dirname(get_config_path())
     return storage.save_model(
         pipeline, config["artifacts"]["model_path"], config_dir=config_dir
     )

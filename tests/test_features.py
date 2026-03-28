@@ -134,3 +134,88 @@ class TestBuildPreprocessor:
         transformed = preprocessor.fit_transform(X)
         assert transformed.shape[0] == len(X)
         assert transformed.shape[1] > 0
+
+
+class TestPipelineRobustness:
+    """Full pipeline (clean → split → preprocess → train) with missing columns."""
+
+    def _run_full_pipeline(self, df, config):
+        """Helper: runs the complete training pipeline end-to-end."""
+        import pandas as pd
+        from src.train import train
+
+        # Need enough rows for stratified split
+        df = pd.concat([df] * 10, ignore_index=True)
+        df_clean = clean_data(df, config)
+        X_train, X_test, y_train, y_test = split_data(df_clean, config)
+        preprocessor = build_preprocessor(X_train)
+        pipeline = train(X_train, y_train, preprocessor, config)
+        return pipeline, X_test, y_test
+
+    def test_full_pipeline_without_age_column(self, raw_df, config):
+        """Removing age from the dataset must not break the training pipeline.
+
+        clean_data() skips the age-cap step and logs a warning.
+        build_preprocessor() infers columns dynamically — age simply absent.
+        The trained pipeline must still produce predictions on the test set.
+        """
+        df_no_age = raw_df.drop(columns=["age"])
+        pipeline, X_test, y_test = self._run_full_pipeline(df_no_age, config)
+
+        assert hasattr(
+            pipeline, "predict"), "Pipeline must have predict method"
+        preds = pipeline.predict(X_test)
+        assert len(preds) == len(y_test)
+        assert set(preds).issubset({0, 1}), "Predictions must be binary"
+        assert "age" not in pipeline.feature_names_in_ if hasattr(
+            pipeline, "feature_names_in_") else True
+
+    def test_full_pipeline_without_pdays_column(self, raw_df, config):
+        """Removing pdays from the dataset must not break the training pipeline.
+
+        clean_data() skips the contacted_before feature (logs a warning).
+        build_preprocessor() infers columns dynamically — contacted_before absent.
+        The trained pipeline must still produce predictions on the test set.
+        """
+        df_no_pdays = raw_df.drop(columns=["pdays"])
+        pipeline, X_test, y_test = self._run_full_pipeline(df_no_pdays, config)
+
+        assert hasattr(
+            pipeline, "predict"), "Pipeline must have predict method"
+        preds = pipeline.predict(X_test)
+        assert len(preds) == len(y_test)
+        assert set(preds).issubset({0, 1}), "Predictions must be binary"
+
+    def test_pipeline_without_pdays_does_not_produce_contacted_before(self, raw_df, config):
+        """contacted_before must not appear in X when pdays is absent at training time.
+
+        If it did appear (e.g. all zeros), the model would expect it at inference
+        on unseen rows — creating a silent feature mismatch.
+        """
+        import pandas as pd
+
+        df = pd.concat([raw_df.drop(columns=["pdays"])]
+                       * 10, ignore_index=True)
+        df_clean = clean_data(df, config)
+        X = df_clean.drop(columns=["target"])
+        assert "contacted_before" not in X.columns
+
+    def test_inference_without_pdays_on_model_trained_without_pdays(self, raw_df, config):
+        """A model trained without pdays must accept inference rows also lacking pdays.
+
+        This reflects the real scenario: if pdays is absent in production data,
+        the training run also won't have it, so no column mismatch occurs.
+        """
+        import pandas as pd
+
+        df_no_pdays = raw_df.drop(columns=["pdays"])
+        pipeline, X_test, _ = self._run_full_pipeline(df_no_pdays, config)
+
+        # Inference row matching training schema (no pdays, no contacted_before)
+        inference_row = X_test.iloc[[0]]
+        assert "pdays" not in inference_row.columns
+        assert "contacted_before" not in inference_row.columns
+
+        pred = pipeline.predict(inference_row)
+        assert len(pred) == 1
+        assert pred[0] in {0, 1}

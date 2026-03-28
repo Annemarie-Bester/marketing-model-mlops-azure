@@ -7,7 +7,15 @@ import textwrap
 
 import pytest
 
-from src.config import load_config
+from src.config import get_config_path, load_config
+
+
+def test_get_config_path_returns_existing_file():
+    """get_config_path() must resolve to the actual config.yaml in the repo."""
+    path = get_config_path()
+    assert os.path.isabs(path), "Expected an absolute path"
+    assert path.endswith("config.yaml")
+    assert os.path.isfile(path), f"config.yaml not found at: {path}"
 
 
 def test_load_config_returns_dict(tmp_path):

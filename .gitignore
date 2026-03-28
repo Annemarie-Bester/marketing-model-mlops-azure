@@ -4,9 +4,10 @@ data/raw/*
 data/results/*
 !data/results/.gitkeep
 
-# Model artifacts — ignore everything except metrics.json and .gitkeep
+# Model artifacts — ignore everything except .gitkeep (preserves directory structure).
+# metrics.json is a generated artifact; the production baseline lives in Blob Storage
+# (production/artifacts/metrics.json) and is fetched by retrain.yml at pipeline time.
 artifacts/*
-!artifacts/metrics.json
 !artifacts/.gitkeep
 
 # Python
