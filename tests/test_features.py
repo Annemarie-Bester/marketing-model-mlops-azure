@@ -62,6 +62,22 @@ class TestCleanData:
         result = clean_data(df_no_target, config)
         assert "target" not in result.columns
 
+    def test_age_cap_skipped_when_column_absent(self, raw_df, config):
+        """Age cap step must skip gracefully and log a warning when age_col is missing."""
+        df_no_age = raw_df.drop(columns=["age"])
+        # Redirect age_col to 'age' (which no longer exists) — should not raise
+        cfg = {**config, "features": {**config["features"], "age_col": "age"}}
+        result = clean_data(df_no_age, cfg)
+        assert "age" not in result.columns
+
+    def test_contacted_before_skipped_when_pdays_absent(self, raw_df, config):
+        """contacted_before must be absent (and no error) when pdays_col is missing."""
+        df_no_pdays = raw_df.drop(columns=["pdays"])
+        cfg = {**config, "features": {**
+                                      config["features"], "pdays_col": "pdays"}}
+        result = clean_data(df_no_pdays, cfg)
+        assert "contacted_before" not in result.columns
+
 
 class TestSplitData:
     def _make_clean_df(self, raw_df, config):
