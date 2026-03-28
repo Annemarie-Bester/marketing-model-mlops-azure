@@ -13,9 +13,12 @@ features:
     - post_campaign_action
 model:
   target_column: target
-  type: logistic_regression # Options: logistic_regression, gradient_boosting, random_forest
+  type: logistic_regression
   test_size: 0.2
   random_state: 42
+  class_weight: "balanced" # Compensates for 7.6:1 imbalance
+  max_iter: 1000 # Increased from default 100 — LR may need more iters post-scaling
+  solver: "lbfgs"
 artifacts:
   model_path: artifacts/model.pkl
   metrics_path: artifacts/metrics.json

@@ -19,33 +19,19 @@ Design decisions:
 import logging
 import os
 
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
 
 # Registry of supported models.
-# Adding a new model = adding one entry here + one option in config.yaml.
+# Only logistic regression is supported in this repo (per project requirement).
 MODEL_REGISTRY = {
-    "logistic_regression": lambda seed: LogisticRegression(
-        class_weight="balanced",  # Compensates for 7.6:1 imbalance
-        max_iter=1000,  # Increased from default 100 — LR may need more iters post-scaling
-        random_state=seed,
-        solver="lbfgs",
-    ),
-    "gradient_boosting": lambda seed: GradientBoostingClassifier(
-        n_estimators=100,
-        learning_rate=0.1,
-        max_depth=3,
-        random_state=seed,
-        # Note: does not support class_weight; handles imbalance via residuals
-    ),
-    "random_forest": lambda seed: RandomForestClassifier(
-        class_weight="balanced",
-        n_estimators=100,
-        random_state=seed,
-        n_jobs=-1,
+    "logistic_regression": lambda cfg: LogisticRegression(
+        class_weight=cfg["model"].get("class_weight", None),
+        max_iter=cfg["model"].get("max_iter", 1000),
+        random_state=cfg["model"].get("random_state", None),
+        solver=cfg["model"].get("solver", "lbfgs"),
     ),
 }
 
@@ -63,15 +49,15 @@ def get_model(config: dict):
         ValueError: If model type is not in MODEL_REGISTRY.
     """
     model_type = config["model"]["type"]
-    random_state = config["model"]["random_state"]
 
-    if model_type not in MODEL_REGISTRY:
+    # Enforce single-model policy: only logistic_regression is supported.
+    if model_type != "logistic_regression":
         raise ValueError(
-            f"Unknown model type '{model_type}'. "
-            f"Supported types: {list(MODEL_REGISTRY)}"
+            "Only 'logistic_regression' is supported in this project. "
+            "Please set model.type to 'logistic_regression' in config.yaml."
         )
 
-    model = MODEL_REGISTRY[model_type](random_state)
+    model = MODEL_REGISTRY["logistic_regression"](config)
     logger.info("Instantiated model: %s", model_type)
     return model
 
@@ -129,7 +115,8 @@ def save_model(pipeline: Pipeline, config: dict) -> str:
     from src import storage
 
     config_dir = os.path.dirname(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config.yaml"))
+        os.path.abspath(os.path.join(
+            os.path.dirname(__file__), "..", "config.yaml"))
     )
     return storage.save_model(
         pipeline, config["artifacts"]["model_path"], config_dir=config_dir
