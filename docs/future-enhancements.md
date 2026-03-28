@@ -19,6 +19,13 @@ Each section identifies the relevant MLOps maturity level and provides official 
 
 ---
 
+## Add in synthetic data generator 
+1. Input raw csv file (can add other file types later on)
+2. Config input for custom data generation
+3. Output new dataset that mimics input dataset subject to config inputs
+4. Notebooks to save files to local directories
+5. CI/CD pipelines (mainly CI pipelines seeing as repo is meant to be run locally.) 
+
 ## Ephemeral Per-PR Environments (Review Apps)
 
 *Relevant to: CI/CD pipeline — per-PR validation against a live Kubernetes endpoint*
