@@ -12,7 +12,7 @@ from src.train import save_model, train
 from src.features import build_preprocessor, clean_data, split_data
 from src.evaluate import evaluate, load_model, save_metrics
 from src.data import load_data
-from src.config import load_config
+from src.config import get_config_path, load_config
 import pandas as pd
 import argparse
 import logging
@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, os.path.dirname(__file__))
 
 
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
-CONFIG_DIR = os.path.dirname(os.path.abspath(CONFIG_PATH))
+CONFIG_PATH = get_config_path()
+CONFIG_DIR = os.path.dirname(CONFIG_PATH)
 
 
 def cmd_train() -> dict:
@@ -141,7 +141,8 @@ def main():
     predict_parser = subparsers.add_parser(
         "predict", help="Batch predict using a trained model"
     )
-    predict_parser.add_argument("--input", required=True, help="Path to input CSV file")
+    predict_parser.add_argument(
+        "--input", required=True, help="Path to input CSV file")
     predict_parser.add_argument(
         "--output", default=None, help="Path to output CSV (default: print to stdout)"
     )

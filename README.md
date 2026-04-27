@@ -114,6 +114,21 @@ artifacts:
   metrics_path: artifacts/metrics.json
 ```
 
+### Environment variables
+
+Runtime behaviour is controlled by environment variables. Local dev uses defaults; cloud values are set via the `bank-marketing-vars` variable group in Azure DevOps (pipelines) and K8s secrets / `deployment.yaml` (inference pods).
+
+| Variable | Default | Scope | Description |
+|---|---|---|---|
+| `STORAGE_BACKEND` | `local` | Local + inference pod | `local` or `azure_blob`. CI training always uses `local`; inference pod sets `azure_blob` via `deployment.yaml` |
+| `AZURE_STORAGE_CONNECTION_STRING` | _(unset)_ | Local dev only | Blob auth — use when testing blob I/O locally |
+| `AZURE_STORAGE_ACCOUNT_NAME` | _(unset)_ | AKS inference pod | Blob auth via AKS managed identity — pulled from K8s secret in `deployment.yaml` |
+| `AZURE_STORAGE_CONTAINER` | _(unset)_ | Local + inference pod | Blob container name — required when `STORAGE_BACKEND=azure_blob` |
+| `MODEL_BLOB_PREFIX` | _(unset)_ | Inference pod | `staging` or `production` — determines which blob path the pod loads `model.pkl` from |
+| `MODEL_PATH` | from `config.yaml` | Local dev only | Override model artifact path locally; not used in cloud (use `MODEL_BLOB_PREFIX` instead) |
+
+See [docs/local-development.md](docs/local-development.md#5-environment-variables) for full examples.
+
 ---
 
 ## Source Modules

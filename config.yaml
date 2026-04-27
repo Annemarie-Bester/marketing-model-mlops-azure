@@ -3,7 +3,10 @@ data:
   separator: ;
   index_col: 0
 features:
-  age_cap: 100
+  age_col: age # Column to apply age cap to. Skip step if column absent.
+  age_cap: 100 # Required only when age_col is present in the dataset.
+  pdays_col: pdays # Column encoding days since last contact (-1 = never). Skip if absent.
+  pdays_sentinel: -1 # Sentinel value meaning 'never contacted'.
   log_transform_cols:
     - duration
     - campaign
@@ -13,9 +16,13 @@ features:
     - post_campaign_action
 model:
   target_column: target
-  type: logistic_regression # Options: logistic_regression, gradient_boosting, random_forest
+  target_positive_value: "yes" # Label in target column that maps to 1 (positive class).
+  type: logistic_regression
   test_size: 0.2
   random_state: 42
+  class_weight: "balanced" # Compensates for 7.6:1 imbalance
+  max_iter: 1000 # Increased from default 100 — LR may need more iters post-scaling
+  solver: "lbfgs"
 artifacts:
   model_path: artifacts/model.pkl
   metrics_path: artifacts/metrics.json

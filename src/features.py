@@ -27,17 +27,16 @@ logger = logging.getLogger(__name__)
 
 
 def clean_data(df: pd.DataFrame, config: dict) -> pd.DataFrame:
-    """Apply EDA-driven cleaning and feature engineering to raw data.
+    """Apply config-driven cleaning and feature engineering to raw data.
 
-    Steps (driven by findings in notebooks/01_eda.ipynb):
-      1. Drop post-hoc variables that risk data leakage.
-      2. Cap implausible age values (4 rows with age > 100 are data entry errors).
-      3. Create 'contacted_before' binary from pdays sentinel (-1 = never contacted).
-         pdays mixes a categorical concept (-1) with a numeric one (days since contact),
-         so splitting into a binary flag + numeric is more informative.
-      4. Apply log1p to right-skewed positive columns (duration, campaign).
-      5. Apply sign-preserving log to balance (can be negative; skew=6.55).
-      6. Encode target column: 'yes' -> 1, 'no' -> 0.
+    Steps applied when the relevant columns are present (all skippable via config):
+      1. Drop leakage columns listed under features.drop_cols.
+      2. Cap implausible values in features.age_col at features.age_cap.
+      3. Create 'contacted_before' binary from features.pdays_col using
+         features.pdays_sentinel as the 'never contacted' marker.
+      4. Apply log1p to right-skewed positive columns in features.log_transform_cols.
+      5. Apply sign-preserving log to columns in features.signed_log_cols.
+      6. Encode target column using model.target_positive_value -> 1, else 0.
 
     Args:
         df: Raw DataFrame returned by load_data().
@@ -58,15 +57,32 @@ def clean_data(df: pd.DataFrame, config: dict) -> pd.DataFrame:
         logger.info("Dropped columns (leakage risk): %s", existing_drop)
 
     # --- 2. Cap implausible ages ---
+    # age_col defaults to 'age'; set features.age_col in config.yaml to override.
+    # age_cap defaults to 100 if not set. Step is skipped if column absent.
+    age_col = feat_cfg.get("age_col", "age")
     age_cap = feat_cfg.get("age_cap", 100)
-    n_capped = int((df["age"] > age_cap).sum())
-    if n_capped > 0:
-        df["age"] = df["age"].clip(upper=age_cap)
-        logger.info("Capped %d row(s) where age > %d", n_capped, age_cap)
+    if age_col in df.columns:
+        n_capped = int((df[age_col] > age_cap).sum())
+        if n_capped > 0:
+            df[age_col] = df[age_col].clip(upper=age_cap)
+            logger.info("Capped %d row(s) where %s > %d",
+                        n_capped, age_col, age_cap)
+    else:
+        logger.warning(
+            "Column '%s' not found — age cap step skipped.", age_col)
 
-    # --- 3. contacted_before flag (pdays == -1 means never contacted) ---
-    df["contacted_before"] = (df["pdays"] != -1).astype(int)
-    logger.info("Created 'contacted_before' feature (1 = was contacted previously)")
+    # --- 3. contacted_before flag (pdays sentinel = never contacted) ---
+    # pdays_col defaults to 'pdays'; pdays_sentinel defaults to -1.
+    # Step is skipped if column absent (e.g. datasets without prior contact info).
+    pdays_col = feat_cfg.get("pdays_col", "pdays")
+    pdays_sentinel = feat_cfg.get("pdays_sentinel", -1)
+    if pdays_col in df.columns:
+        df["contacted_before"] = (df[pdays_col] != pdays_sentinel).astype(int)
+        logger.info("Created 'contacted_before' feature from '%s' (sentinel=%s)",
+                    pdays_col, pdays_sentinel)
+    else:
+        logger.warning(
+            "Column '%s' not found — 'contacted_before' feature skipped.", pdays_col)
 
     # --- 4. Log1p transform for right-skewed positive columns ---
     for col in feat_cfg.get("log_transform_cols", []):
@@ -82,9 +98,12 @@ def clean_data(df: pd.DataFrame, config: dict) -> pd.DataFrame:
             logger.info("Applied signed log transform to '%s'", col)
 
     # --- 6. Encode target (skip during prediction when target is absent) ---
+    # target_positive_value configures which string label maps to 1.
+    # Defaults to 'yes' for the bank marketing dataset; override in config.yaml.
     if target_col in df.columns:
-        df[target_col] = (df[target_col] == "yes").astype(int)
-        logger.info("Encoded target '%s': yes=1, no=0", target_col)
+        pos_val = config["model"].get("target_positive_value", "yes")
+        df[target_col] = (df[target_col] == pos_val).astype(int)
+        logger.info("Encoded target '%s': %s=1, else=0", target_col, pos_val)
 
     return df
 
@@ -95,7 +114,9 @@ def split_data(
     """Split the cleaned DataFrame into stratified train/test sets.
 
     Stratified split ensures both sets reflect the original class distribution,
-    which is important given the 7.6:1 class imbalance in this dataset.
+    which is important for imbalanced classification problems.
+
+    Split parameters (test_size, random_state) are read from config.model.
 
     Args:
         df: Cleaned DataFrame from clean_data().
@@ -169,6 +190,7 @@ def build_preprocessor(X_train: pd.DataFrame) -> ColumnTransformer:
     if numeric_cols:
         transformers.append(("numeric", numeric_pipeline, numeric_cols))
     if categorical_cols:
-        transformers.append(("categorical", categorical_pipeline, categorical_cols))
+        transformers.append(
+            ("categorical", categorical_pipeline, categorical_cols))
 
     return ColumnTransformer(transformers=transformers, remainder="drop")

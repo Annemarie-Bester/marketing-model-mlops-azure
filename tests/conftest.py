@@ -6,10 +6,15 @@ All fixtures use in-memory data — no disk I/O, no dependency on
 the real dataset being present.
 """
 
-import textwrap
-
-import pandas as pd
+# Ensure the repository root is on sys.path so tests can import `src`.
 import pytest
+import pandas as pd
+import textwrap
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 
 @pytest.fixture
